@@ -101,7 +101,7 @@ export default function App() {
   function firebaseAuthMessage(error: unknown, mode: 'login'|'register'|'reset') {
     const code = typeof error === 'object' && error !== null && 'code' in error ? String((error as {code?: unknown}).code || '') : ''
     if (mode === 'register' && code === 'auth/email-already-in-use') return 'User already exists. Please sign in'
-    if (mode === 'login' && ['auth/invalid-credential','auth/wrong-password','auth/user-not-found','auth/invalid-email'].includes(code)) return 'Email or password is incorrect'
+    if (mode === 'login' && ['auth/invalid-credential','auth/invalid-login-credentials','auth/wrong-password','auth/user-not-found','auth/invalid-email'].includes(code)) return 'Email or password is incorrect'
     if (mode === 'reset' && code === 'auth/invalid-email') return 'Enter a valid email address.'
     if (code === 'auth/weak-password') return 'Use a stronger password with at least 6 characters.'
     if (code === 'auth/too-many-requests') return 'Too many attempts. Please wait and try again.'
