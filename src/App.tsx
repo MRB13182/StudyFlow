@@ -71,6 +71,9 @@ export default function App() {
   const [slotEnd,setSlotEnd] = useState('11:00')
   const [editingProfile,setEditingProfile] = useState(false)
   const [planBusy,setPlanBusy] = useState(false)
+  const [passwordRecovery,setPasswordRecovery] = useState(() => window.location.hash.includes('type=recovery') || new URLSearchParams(window.location.search).get('flow') === 'password-reset')
+  const [newPassword,setNewPassword] = useState('')
+  const [confirmNewPassword,setConfirmNewPassword] = useState('')
 
   useEffect(() => {
     if (!supabase) { setAuthReady(true); return }
@@ -125,7 +128,7 @@ export default function App() {
         if (error) throw error
         setNotice({type:'success',text:'You are signed in.'})
       } else {
-        const {error} = await supabase.auth.resetPasswordForEmail(email,{redirectTo:`${window.location.origin}/`})
+        const {error} = await supabase.auth.resetPasswordForEmail(email,{redirectTo:`${window.location.origin}/?flow=password-reset`})
         if (error) throw error
         setNotice({type:'success',text:'If the address belongs to an account, a password reset email will arrive shortly.'})
       }
@@ -136,7 +139,21 @@ export default function App() {
   async function signOut() {
     if (!supabase) return
     await supabase.auth.signOut()
+    setPasswordRecovery(false)
     setView('Home'); setNotice({type:'success',text:'You have been signed out.'})
+  }
+  async function updatePassword(e: FormEvent) {
+    e.preventDefault()
+    if (!supabase) return
+    if (newPassword.length < 8) { setNotice({type:'error',text:'Use a password with at least 8 characters.'}); return }
+    if (newPassword !== confirmNewPassword) { setNotice({type:'error',text:'The passwords do not match.'}); return }
+    setAuthBusy(true); setNotice(null)
+    const {error} = await supabase.auth.updateUser({password:newPassword})
+    setAuthBusy(false)
+    if (error) { setNotice({type:'error',text:error.message}); return }
+    window.history.replaceState({}, document.title, window.location.pathname)
+    setPasswordRecovery(false); setNewPassword(''); setConfirmNewPassword('')
+    setNotice({type:'success',text:'Your password has been updated.'})
   }
   async function saveProfile(e:FormEvent) {
     e.preventDefault()
@@ -254,6 +271,8 @@ export default function App() {
     </main><footer className="public-footer" id="about"><Brand small/><span>Make room for focused learning.</span><span>© {new Date().getFullYear()} Study Flow</span></footer>
     {notice && <div className={`toast toast-${notice.type}`}><span>{notice.text}</span><button onClick={noticeDismiss} aria-label="Dismiss message"><X size={16}/></button></div>}
   </div>
+
+  if (passwordRecovery && user) return <div className="recovery-shell"><form className="panel recovery-card" onSubmit={updatePassword}><Brand/><span className="icon-tile recovery-icon"><KeyRound size={23}/></span><h1>Choose a new password</h1><p>Create a new password for your Study Flow account.</p><Field label="New password" value={newPassword} onChange={setNewPassword} type="password" placeholder="At least 8 characters" required/><Field label="Confirm new password" value={confirmNewPassword} onChange={setConfirmNewPassword} type="password" placeholder="Enter it again" required/><Button type="submit" disabled={authBusy}>{authBusy?<><LoaderCircle size={16} className="spin"/> Updating…</>:'Update password'} {!authBusy&&<ArrowRight size={16}/>}</Button>{notice&&<div className={`notice notice-${notice.type}`}>{notice.text}</div>}</form></div>
 
   return <div className="dashboard-shell">
     <aside className={`sidebar ${mobileNav?'sidebar-open':''}`}><div className="sidebar-brand"><Brand small/><button className="mobile-close" onClick={()=>setMobileNav(false)}><X size={18}/></button></div><div className="sidebar-label">WORKSPACE</div><nav>{navItems.map(item=><button key={item.label} className={view===item.label?'nav-item active':'nav-item'} onClick={()=>{setView(item.label);setMobileNav(false)}}>{item.icon}<span>{item.label}</span>{view===item.label&&<span className="nav-dot"/>}</button>)}</nav><div className="sidebar-bottom"><div className="sidebar-motivation"><div className="motivation-icon"><Sparkles size={22}/></div><strong>Keep going!</strong><span>Small steps build big progress.</span></div><button className="nav-item signout" onClick={signOut}><LogOut size={18}/><span>Sign out</span></button></div></aside>
