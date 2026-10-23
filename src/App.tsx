@@ -147,14 +147,14 @@ export default function App() {
     if (mode === 'reset' && (code === 'validation_failed' || code === 'email_address_invalid')) return 'Enter a valid email address.'
     if (code === 'weak_password' || message.includes('password should be')) return 'Use a stronger password with at least 8 characters.'
     if (code === 'over_request_rate_limit' || code === 'too_many_requests') return 'Too many attempts. Please wait and try again.'
-    if (message.includes('fetch') || message.includes('network')) return 'Network error. Check your connection and try again.'
+    if (message.includes('fetch') || message.includes('network') || message.includes('failed to fetch')) return 'Cannot connect to Supabase. Check your internet connection and verify the project URL/key in src/lib/supabase.ts. A restricted network or browser extension may also block supabase.co.'
     return 'Something went wrong. Please try again.'
   }
 
   async function handleAuth(e: FormEvent) {
     e.preventDefault()
     if (authMode==='register' && password!==confirmPassword) { setNotice({type:'error',text:'Passwords do not match.'}); return }
-    if (authMode==='register' && username.trim() && (username.trim().length<3 || username.trim().length>32)) { setNotice({type:'error',text:'Username must be 3–32 characters, or leave it blank.'}); return }
+    if (authMode==='register' && username.trim() && !/^[a-zA-Z0-9_.-]{3,32}$/.test(username.trim())) { setNotice({type:'error',text:'Username must be 3–32 characters and use only letters, numbers, dots, underscores or hyphens.'}); return }
     if (authMode==='register' && password.length<8) { setNotice({type:'error',text:'Use a password with at least 8 characters.'}); return }
     setAuthBusy(true); setNotice(null)
     try {
@@ -215,7 +215,7 @@ export default function App() {
       if(readError)throw readError
       setProfile({id:data.id,full_name:data.full_name,class_name:data.class_name,school:data.school,exam_year:data.exam_year?String(data.exam_year):'',username:data.username||'',about:data.about||''})
       setEditingProfile(false);setNotice({type:'success',text:'Profile saved.'})
-    } catch {setNotice({type:'error',text:'Could not save the profile. The username may already be taken.'})}
+    } catch (error) { const message=errorText(error).toLowerCase(); setNotice({type:'error',text:message.includes('duplicate')||message.includes('unique')?'That username is already taken. Choose another one.':message.includes('fetch')?'Cannot connect to Supabase. Check your connection and retry.':'Could not save the profile. Please retry.'}) }
     finally {setLoadingData(false)}
   }
 
