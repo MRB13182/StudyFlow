@@ -132,7 +132,7 @@ export default function App() {
     return () => { cancelled = true }
   }, [user?.id])
 
-  const greetingName = user?.displayName || user?.email?.split('@')[0] || 'Student'
+  const greetingName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Student'
   const completed = sessions.filter(s=>s.status==='completed').length
   const studyMinutes = sessions.filter(s=>s.status==='completed').reduce((sum,s)=>sum+Math.max(0,mins(s.end_time)-mins(s.start_time)),0)
   const today = (new Date().getDay()+6)%7
