@@ -75,15 +75,6 @@ export default function App() {
     setAuthReady(true)
   }), [])
 
-  // User profile, subjects, availability and routines are intentionally not persisted.
-  useEffect(() => {
-    setProfile(null)
-    setSubjects([])
-    setSlots([])
-    setSessions([])
-    setLoadingData(false)
-  }, [user?.uid])
-
   async function handleAuth(e: FormEvent) {
     e.preventDefault()
     setAuthBusy(true); setNotice(null)
@@ -143,14 +134,6 @@ export default function App() {
       setNotice({type:'error',text:firebaseErrorMessage(e)})
     } finally { setAuthBusy(false) }
   }
-  const greetingName = user?.displayName || user?.email?.split('@')[0] || 'Student'
-  const completed = sessions.filter(s=>s.status==='completed').length
-  const studyMinutes = sessions.filter(s=>s.status==='completed').reduce((sum,s)=>sum+Math.max(0,mins(s.end_time)-mins(s.start_time)),0)
-  const today = (new Date().getDay()+6)%7
-  const todaySessions = sessions.filter(s=>s.day_of_week===today).sort((a,b)=>a.start_time.localeCompare(b.start_time))
-  const noticeDismiss = () => setNotice(null)
-
-  // This integration uses Firebase Authentication only. No Firestore or Storage operations.
   const greetingName = user?.displayName || user?.email?.split('@')[0] || 'Student'
   const completed = 0
   const studyMinutes = 0
