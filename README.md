@@ -24,8 +24,8 @@ In Supabase Dashboard → Authentication → URL Configuration:
 - Add that origin and the local development URL (for example `http://localhost:5173/**`) to allowed redirects.
 - Configure email confirmation, password recovery templates, and SMTP suitable for production.
 
-## Database schema
-The StudyFlow project has `profiles`, `subjects`, `time_slots`, `study_sessions`, `study_plans`, and `user_preferences`. User records are linked to `auth.users`; owner-scoped RLS policies use `auth.uid()`. Constraints, per-user uniqueness, indexes, update timestamps, signup profile creation, database-level overlap checks, and a transactional routine replacement function are included.
+## Database schema and migrations
+The StudyFlow project has `profiles`, `subjects`, `time_slots`, `study_sessions`, `study_plans`, and `user_preferences`. User records are linked to `auth.users`; owner-scoped RLS policies use `auth.uid()`. Constraints, per-user uniqueness, indexes, update timestamps, signup profile creation, database-level overlap checks, and a transactional routine replacement function are included. Applied SQL migrations are tracked in `supabase/migrations/` so the schema changes are reviewable and reproducible.
 
 ## No demo data
 No demo accounts, demo credentials, sample users, or pre-seeded planner records are created. Each new user starts with an empty planner.
