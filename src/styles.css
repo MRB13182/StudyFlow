@@ -404,3 +404,12 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
   .workspace-footer>span:last-child { margin-left:0; }
   .toast { right:12px;bottom:12px; }
 }
+
+.recovery-shell { min-height:100vh;display:grid;place-items:center;padding:22px;background:radial-gradient(ellipse at 20% 0%,rgba(205,221,255,.55),transparent 45%),#f6f9ff; }
+.recovery-card { width:min(100%,450px);padding:30px;display:flex;flex-direction:column;align-items:stretch;gap:14px; }
+.recovery-card>.brand { margin-bottom:12px; }
+.recovery-card>.recovery-icon { margin:0 auto 2px; }
+.recovery-card h1 { text-align:center;font-size:23px;letter-spacing:-.7px;margin:0; }
+.recovery-card>p { text-align:center;color:#7885a6;font-size:12px;line-height:1.6;margin:0 0 8px; }
+.recovery-card .button { width:100%; }
+.recovery-card .notice { margin:2px 0 0; }
