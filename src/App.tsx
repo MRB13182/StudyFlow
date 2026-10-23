@@ -139,13 +139,6 @@ export default function App() {
       setNotice({type:'error',text:firebaseErrorMessage(e)})
     } finally { setAuthBusy(false) }
   }
-  const greetingName = user?.displayName || user?.email?.split('@')[0] || 'Student'
-  const completed = 0
-  const studyMinutes = 0
-  const today = (new Date().getDay()+6)%7
-  const todaySessions: StudySession[] = []
-  const noticeDismiss = () => setNotice(null)
-
   const navItems:{label:View;icon:ReactNode}[]=[
     {label:'Home',icon:<Home size={18}/>},{label:'Profile',icon:<UserRound size={18}/>},
     {label:'Subjects',icon:<BookOpen size={18}/>},{label:'Block Time',icon:<CalendarClock size={18}/>},
