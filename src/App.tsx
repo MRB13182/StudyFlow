@@ -147,7 +147,7 @@ export default function App() {
     if (mode === 'reset' && (code === 'validation_failed' || code === 'email_address_invalid')) return 'Enter a valid email address.'
     if (code === 'weak_password' || message.includes('password should be')) return 'Use a stronger password with at least 8 characters.'
     if (code === 'over_request_rate_limit' || code === 'too_many_requests') return 'Too many attempts. Please wait and try again.'
-    if (message.includes('fetch') || message.includes('network') || message.includes('failed to fetch')) return 'Cannot connect to Supabase. Check your internet connection and verify the project URL/key in src/lib/supabase.ts. A restricted network or browser extension may also block supabase.co.'
+    if (message.includes('fetch') || message.includes('network') || message.includes('failed to fetch')) return 'Cannot connect to Supabase. The app is configured for the StudyFlow Supabase project; check the project URL/key and whether the current network or browser extensions block supabase.co.'
     return 'Something went wrong. Please try again.'
   }
 
