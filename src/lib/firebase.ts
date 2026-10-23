@@ -2,8 +2,6 @@ import { getApp, getApps, initializeApp } from 'firebase/app'
 import { getAnalytics, isSupported } from 'firebase/analytics'
 import { getAuth } from 'firebase/auth'
 
-// Firebase web configuration. These values identify the project; secure access
-// through Firebase Authentication and project settings, never private server keys.
 const firebaseConfig = {
   apiKey: 'AIzaSyA-wFVq7nvpAlC6ckOmeCsDWX6y_bMvwz8',
   authDomain: 'studyflow-71cdd.firebaseapp.com',
@@ -17,7 +15,7 @@ const firebaseConfig = {
 export const firebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig)
 export const auth = getAuth(firebaseApp)
 
-// Analytics is optional and must never prevent authentication from working.
+// Analytics is optional; unsupported browsers or blockers must not prevent login.
 export const analyticsPromise = isSupported()
   .then((supported) => (supported ? getAnalytics(firebaseApp) : null))
   .catch(() => null)
