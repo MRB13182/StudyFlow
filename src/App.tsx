@@ -209,7 +209,14 @@ export default function App() {
     if(!user)return
     setLoadingData(true)
     try {
-      const {error}=await supabase.from('profiles').update({full_name:fullName.trim(),class_name:className.trim(),school:school.trim(),username:username.trim()||null}).eq('id',user.id)
+      const profilePayload = {
+        id: user.id,
+        full_name: fullName.trim(),
+        class_name: className.trim(),
+        school: school.trim(),
+        username: username.trim() || null,
+      }
+      const {error}=await supabase.from('profiles').upsert(profilePayload)
       if(error)throw error
       const {data,error:readError}=await supabase.from('profiles').select('*').eq('id',user.id).single()
       if(readError)throw readError
@@ -289,7 +296,16 @@ export default function App() {
     if(!user){setPlanBusy(false);return}
     const routinePayload=planned.map(p=>({subject_id:p.subject_id,subject_name:p.subject_name,day_of_week:p.day_of_week,start_time:p.start_time,end_time:p.end_time}))
     const {error:saveError}=await supabase.rpc('replace_planned_study_sessions',{p_sessions:routinePayload})
-    if(saveError){setPlanBusy(false);setNotice({type:'error',text:'Could not save the generated routine. Your previous routine has been preserved.'});return}
+    if(saveError){
+      const {error:delError}=await supabase.from('study_sessions').delete().eq('user_id',user.id).eq('status','planned')
+      if(!delError){
+        const directPayload=planned.map(p=>({user_id:user.id,subject_id:p.subject_id,subject_name:p.subject_name,day_of_week:p.day_of_week,start_time:p.start_time,end_time:p.end_time,status:'planned' as const}))
+        const {error:insError}=await supabase.from('study_sessions').insert(directPayload)
+        if(insError){setPlanBusy(false);setNotice({type:'error',text:'Could not save the generated routine. Your previous routine has been preserved.'});return}
+      } else {
+        setPlanBusy(false);setNotice({type:'error',text:'Could not save the generated routine. Your previous routine has been preserved.'});return
+      }
+    }
     const {data,error}=await supabase.from('study_sessions').select('*').eq('user_id',user.id).order('day_of_week').order('start_time')
     if(error){setPlanBusy(false);setNotice({type:'error',text:'Routine saved, but it could not be refreshed. Reload the page to see it.'});return}
     setSessions((data||[]).map((s:any)=>({id:s.id,subject_id:s.subject_id,subject_name:s.subject_name,day_of_week:s.day_of_week,start_time:String(s.start_time).slice(0,5),end_time:String(s.end_time).slice(0,5),status:s.status})))

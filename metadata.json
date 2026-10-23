@@ -1,0 +1,6 @@
+{
+  "name": "Study Flow",
+  "description": "AI-Powered Student Planner — organize subjects, manage your time, and build a study routine that fits your life.",
+  "permissions": [],
+  "capabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
