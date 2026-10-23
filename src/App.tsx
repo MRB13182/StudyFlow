@@ -141,14 +141,20 @@ export default function App() {
 
   function authErrorMessage(error: unknown, mode: 'login'|'register'|'reset') {
     const code = typeof error === 'object' && error !== null && 'code' in error ? String((error as {code?: unknown}).code || '') : ''
-    const message = errorText(error).toLowerCase()
-    if (mode === 'register' && (code === 'user_already_exists' || message.includes('already registered'))) return 'An account with this email already exists. Please sign in.'
-    if (mode === 'login' && (code === 'invalid_credentials' || message.includes('invalid login credentials'))) return 'Email or password is incorrect.'
+    const message = errorText(error)
+    const normalized = message.toLowerCase()
+    if (mode === 'register' && (code === 'user_already_exists' || normalized.includes('already registered'))) return 'An account with this email already exists. Please sign in.'
+    if (mode === 'login' && (code === 'invalid_credentials' || normalized.includes('invalid login credentials'))) return 'Email or password is incorrect.'
     if (mode === 'reset' && (code === 'validation_failed' || code === 'email_address_invalid')) return 'Enter a valid email address.'
-    if (code === 'weak_password' || message.includes('password should be')) return 'Use a stronger password with at least 8 characters.'
+    if (code === 'weak_password' || normalized.includes('password should be')) return 'Use a stronger password with at least 8 characters.'
     if (code === 'over_request_rate_limit' || code === 'too_many_requests') return 'Too many attempts. Please wait and try again.'
-    if (message.includes('fetch') || message.includes('network') || message.includes('failed to fetch')) return 'Cannot reach Supabase. Check your internet connection, the project API URL/key, and whether your network or browser extensions block supabase.co.'
-    return 'Something went wrong. Please try again.'
+    if (normalized.includes('fetch') || normalized.includes('network') || normalized.includes('failed to fetch') || normalized.includes('timeout')) {
+      return 'Cannot reach Supabase. Check your internet connection, API URL/key, and whether your network or browser extensions block supabase.co.'
+    }
+    // Preserve the provider message so configuration and database-trigger failures are diagnosable.
+    // Auth responses do not include submitted passwords; never log form fields or tokens here.
+    const providerMessage = message.trim()
+    return providerMessage ? `Authentication failed (${code || 'unknown error'}): ${providerMessage}` : 'Authentication failed. Please try again.'
   }
 
   async function handleAuth(e: FormEvent) {
