@@ -59,11 +59,13 @@ export default function App() {
   const [password,setPassword] = useState('')
   const [confirmPassword,setConfirmPassword] = useState('')
   const [recoveryCode,setRecoveryCode] = useState('')
-  const [passwordRecovery,setPasswordRecovery] = useState(() => new URLSearchParams(window.location.search).get('mode') === 'resetPassword' && new URLSearchParams(window.location.search).has('oobCode'))
+  const [passwordRecovery,setPasswordRecovery] = useState(() => {
+    const params = new URLSearchParams(window.location.search)
+    return params.get('mode') === 'resetPassword' && params.has('oobCode')
+  })
   const [notice,setNotice] = useState<Notice|null>(null)
   const [view,setView] = useState<View>('Home')
   const [mobileNav,setMobileNav] = useState(false)
-
   const subjects: Subject[] = []
   const slots: TimeSlot[] = []
   const sessions: StudySession[] = []
@@ -74,50 +76,51 @@ export default function App() {
   }), [])
 
   const greetingName = user?.displayName || user?.email?.split('@')[0] || 'Student'
-  const completed = 0
-  const studyMinutes = 0
   const today = (new Date().getDay()+6)%7
-  const todaySessions: StudySession[] = []
   const noticeDismiss = () => setNotice(null)
 
   async function handleAuth(e: FormEvent) {
     e.preventDefault()
-    setAuthBusy(true); setNotice(null)
+    setAuthBusy(true)
+    setNotice(null)
     try {
-      if (authMode==='register') {
+      if (authMode === 'register') {
         if (password !== confirmPassword) throw new Error('Passwords do not match')
         if (password.length < 6) throw new Error('Password must be at least 6 characters')
-        await createUserWithEmailAndPassword(auth,email.trim(),password)
-        setNotice({type:'success',text:'Account created. You are now signed in.'})
+        await createUserWithEmailAndPassword(auth, email.trim(), password)
         setView('Home')
-      } else if (authMode==='login') {
-        await signInWithEmailAndPassword(auth,email.trim(),password)
-        setNotice({type:'success',text:'Signed in successfully.'})
+      } else if (authMode === 'login') {
+        await signInWithEmailAndPassword(auth, email.trim(), password)
         setView('Home')
       } else {
-        await sendPasswordResetEmail(auth,email.trim())
+        await sendPasswordResetEmail(auth, email.trim())
         setNotice({type:'success',text:'If this email is registered, a password reset email has been sent.'})
       }
     } catch (e) {
       const code = typeof e === 'object' && e !== null && 'code' in e ? String((e as {code:unknown}).code) : ''
-      if (authMode==='login' && ['auth/invalid-credential','auth/wrong-password','auth/user-not-found','auth/invalid-email'].includes(code)) {
+      if (authMode === 'login' && ['auth/invalid-credential','auth/wrong-password','auth/user-not-found','auth/invalid-email'].includes(code)) {
         setNotice({type:'error',text:'Email or password is incorrect'})
-      } else if (authMode==='register' && ['auth/email-already-in-use','auth/account-exists-with-different-credential'].includes(code)) {
+      } else if (authMode === 'register' && ['auth/email-already-in-use','auth/account-exists-with-different-credential'].includes(code)) {
         setNotice({type:'error',text:'User already exists. Please sign in'})
       } else {
         setNotice({type:'error',text:firebaseErrorMessage(e)})
       }
-    } finally { setAuthBusy(false) }
+    } finally {
+      setAuthBusy(false)
+    }
   }
 
   async function signOutUser() {
     try {
       await signOut(auth)
       setView('Home')
-      setNotice(null)
       setAuthMode('login')
       setPassword('')
-    } catch (e) { setNotice({type:'error',text:firebaseErrorMessage(e)}) }
+      setConfirmPassword('')
+      setNotice(null)
+    } catch (e) {
+      setNotice({type:'error',text:firebaseErrorMessage(e)})
+    }
   }
 
   async function updateRecoveredPassword(e: FormEvent) {
