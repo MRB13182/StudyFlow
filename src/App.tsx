@@ -6,7 +6,7 @@ import {
   Menu, Plus, Settings as SettingsIcon, ShieldCheck, Sparkles, Trash2, UserRound,
   X, Zap, Eye, EyeOff, CalendarClock, ListChecks
 } from 'lucide-react'
-import { supabase } from './lib/supabase'
+import { getAuthRedirectUrl, supabase } from './lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
 type Profile = { id: string; full_name: string; class_name: string; school: string; exam_year: string; username: string; about: string }
@@ -76,6 +76,18 @@ export default function App() {
   const [confirmNewPassword,setConfirmNewPassword] = useState('')
 
   useEffect(() => {
+    // Surface Auth callback errors so expired links and redirect misconfiguration are diagnosable.
+    const callbackQuery = new URLSearchParams(window.location.search)
+    const callbackHash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+    const callbackError = callbackQuery.get('error_description') || callbackHash.get('error_description')
+    const callbackCode = callbackQuery.get('error_code') || callbackHash.get('error_code')
+    if (callbackError || callbackCode) {
+      const readableError = (callbackError || callbackCode || 'Authentication callback failed').replace(/\+/g, ' ')
+      setNotice({ type: 'error', text: `Email confirmation/sign-in link failed: ${readableError}. Request a fresh link and check the Supabase Auth URL Configuration.` })
+      window.history.replaceState({}, document.title, window.location.pathname)
+    } else if (callbackQuery.has('code') || callbackHash.has('access_token')) {
+      setNotice({ type: 'info', text: 'Authentication link received. Verifying your session…' })
+    }
     let alive = true
     supabase.auth.getSession().then(({ data, error }) => {
       if (!alive) return
@@ -92,7 +104,7 @@ export default function App() {
       if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true)
       setAuthReady(true)
     })
-    if (window.location.hash.includes('type=recovery')) setPasswordRecovery(true)
+    if (window.location.hash.includes('type=recovery') || callbackQuery.get('flow') === 'password-reset') setPasswordRecovery(true)
     return () => { alive = false; subscription.unsubscribe() }
   }, [])
 
@@ -167,7 +179,7 @@ export default function App() {
       if (authMode==='register') {
         const {data,error} = await supabase.auth.signUp({
           email:email.trim(),password,
-          options:{data:{full_name:fullName.trim(),class_name:className.trim(),school:school.trim(),username:username.trim()||null},emailRedirectTo:window.location.origin}
+          options:{data:{full_name:fullName.trim(),class_name:className.trim(),school:school.trim(),username:username.trim()||null},emailRedirectTo:getAuthRedirectUrl()}
         })
         if(error) throw error
         setNotice({type:'success',text:data.session?'Your account was created. Welcome to Study Flow!':'Account created. Check your email to confirm your address before logging in.'})
@@ -176,7 +188,7 @@ export default function App() {
         if(error) throw error
         setNotice({type:'success',text:'You are signed in.'})
       } else {
-        const {error}=await supabase.auth.resetPasswordForEmail(email.trim(),{redirectTo:window.location.origin})
+        const {error}=await supabase.auth.resetPasswordForEmail(email.trim(),{redirectTo:getAuthRedirectUrl()})
         if(error) throw error
         setNotice({type:'success',text:'If the address belongs to an account, a password reset email will arrive shortly.'})
       }
