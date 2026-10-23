@@ -6,29 +6,29 @@ Study Flow is a responsive React + TypeScript student planner using Supabase as 
 - React + TypeScript + Vite
 - Supabase Auth for registration, login, logout, persistent sessions, email confirmation, and password recovery
 - Supabase Postgres for profiles, subjects, available/blocked time, study sessions, study plans, and preferences
-- Row Level Security (RLS) on all exposed user-data tables
+- Row Level Security (RLS) on every exposed user-data table
 
 ## Supabase configuration
-Create a local `.env` file (not committed) or set these variables in your hosting provider:
+The app is preconfigured to use the StudyFlow Supabase project. Optional environment variables can override the defaults:
 
 ```dotenv
 VITE_SUPABASE_URL=https://vozxngzgtskudloxkxcs.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-key
 ```
 
-The publishable key is intended for browser clients. Never place a Supabase secret or service-role key in frontend code.
+The publishable key is a public browser key, not a service-role secret. Never put a Supabase secret or service-role key in frontend code. User data protection relies on database RLS policies.
 
 ## Authentication dashboard setup
 In Supabase Dashboard → Authentication → URL Configuration:
-- Set Site URL to the deployed website's exact origin.
-- Add the production origin and local development URL (for example `http://localhost:5173/**`) to allowed redirects.
-- Configure email confirmation and password recovery templates/SMTP as needed.
+- Set Site URL to the final deployed website's exact origin.
+- Add that origin and the local development URL (for example `http://localhost:5173/**`) to allowed redirects.
+- Configure email confirmation, password recovery templates, and SMTP suitable for production.
 
 ## Database schema
-The StudyFlow project includes `profiles`, `subjects`, `time_slots`, `study_sessions`, `study_plans`, and `user_preferences`. Owner-scoped RLS policies use `auth.uid()`; validation constraints, indexes, timestamps, and per-user uniqueness constraints are included.
+The StudyFlow project has `profiles`, `subjects`, `time_slots`, `study_sessions`, `study_plans`, and `user_preferences`. User records are linked to `auth.users`; owner-scoped RLS policies use `auth.uid()`. Constraints, per-user uniqueness, indexes, update timestamps, signup profile creation, database-level overlap checks, and a transactional routine replacement function are included.
 
 ## No demo data
-No demo accounts, credentials, sample users, or seeded planner records are created. New users start with an empty planner.
+No demo accounts, demo credentials, sample users, or pre-seeded planner records are created. Each new user starts with an empty planner.
 
 ## Run locally
 ```bash
@@ -38,6 +38,6 @@ npm run build
 npm run preview
 ```
 
-Accounts from the former authentication provider are not automatically transferred; those users must register again or be explicitly migrated. The planner uses a deterministic scheduling algorithm based on saved data; no external AI service is configured.
+Accounts from a previous authentication provider are not imported automatically; users must register again or be explicitly migrated. Study plans currently use a deterministic scheduling algorithm based on saved data; no external AI service is configured.
 
-Never commit `.env` or server-side secrets.
+Never commit `.env` files containing secrets.
