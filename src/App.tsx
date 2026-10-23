@@ -132,7 +132,7 @@ export default function App() {
     return () => { cancelled = true }
   }, [user?.id])
 
-  const greetingName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Student'
+  const greetingName = profile?.full_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Student'
   const completed = sessions.filter(s=>s.status==='completed').length
   const studyMinutes = sessions.filter(s=>s.status==='completed').reduce((sum,s)=>sum+Math.max(0,mins(s.end_time)-mins(s.start_time)),0)
   const today = (new Date().getDay()+6)%7
@@ -154,6 +154,7 @@ export default function App() {
   async function handleAuth(e: FormEvent) {
     e.preventDefault()
     if (authMode==='register' && password!==confirmPassword) { setNotice({type:'error',text:'Passwords do not match.'}); return }
+    if (authMode==='register' && username.trim() && (username.trim().length<3 || username.trim().length>32)) { setNotice({type:'error',text:'Username must be 3–32 characters, or leave it blank.'}); return }
     if (authMode==='register' && password.length<8) { setNotice({type:'error',text:'Use a password with at least 8 characters.'}); return }
     setAuthBusy(true); setNotice(null)
     try {
