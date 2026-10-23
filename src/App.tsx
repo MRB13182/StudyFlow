@@ -125,17 +125,16 @@ export default function App() {
 
   async function updateRecoveredPassword(e: FormEvent) {
     e.preventDefault()
-    if (newPassword.length < 6) { setNotice({type:'error',text:'Password must be at least 6 characters'}); return }
-    if (newPassword !== confirmNewPassword) { setNotice({type:'error',text:'Passwords do not match'}); return }
+    if (password.length < 6) { setNotice({type:'error',text:'Password must be at least 6 characters'}); return }
+    if (password !== confirmPassword) { setNotice({type:'error',text:'Passwords do not match'}); return }
     const code = new URLSearchParams(window.location.search).get('oobCode') || recoveryCode
     if (!code) { setNotice({type:'error',text:'Open the password reset link from your email to choose a new password.'}); return }
     setAuthBusy(true); setNotice(null)
     try {
-      // Firebase password reset codes come from the email action link.
       await verifyPasswordResetCode(auth, code)
-      await confirmPasswordReset(auth, code, newPassword)
+      await confirmPasswordReset(auth, code, password)
       window.history.replaceState({},document.title,window.location.pathname)
-      setPasswordRecovery(false); setNewPassword(''); setConfirmNewPassword(''); setRecoveryCode('')
+      setPasswordRecovery(false); setPassword(''); setConfirmPassword(''); setRecoveryCode('')
       setAuthMode('login')
       setNotice({type:'success',text:'Password updated. Please sign in with your new password.'})
     } catch (e) {
