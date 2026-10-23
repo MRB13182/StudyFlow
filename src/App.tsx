@@ -59,6 +59,8 @@ export default function App() {
   const [password,setPassword] = useState('')
   const [confirmPassword,setConfirmPassword] = useState('')
   const [recoveryCode,setRecoveryCode] = useState('')
+  const [newPassword,setNewPassword] = useState('')
+  const [confirmNewPassword,setConfirmNewPassword] = useState('')
   const [passwordRecovery,setPasswordRecovery] = useState(() => {
     const params = new URLSearchParams(window.location.search)
     return params.get('mode') === 'resetPassword' && params.has('oobCode')
@@ -125,16 +127,16 @@ export default function App() {
 
   async function updateRecoveredPassword(e: FormEvent) {
     e.preventDefault()
-    if (password.length < 6) { setNotice({type:'error',text:'Password must be at least 6 characters'}); return }
-    if (password !== confirmPassword) { setNotice({type:'error',text:'Passwords do not match'}); return }
+    if (newPassword.length < 6) { setNotice({type:'error',text:'Password must be at least 6 characters'}); return }
+    if (newPassword !== confirmNewPassword) { setNotice({type:'error',text:'Passwords do not match'}); return }
     const code = new URLSearchParams(window.location.search).get('oobCode') || recoveryCode
     if (!code) { setNotice({type:'error',text:'Open the password reset link from your email to choose a new password.'}); return }
     setAuthBusy(true); setNotice(null)
     try {
       await verifyPasswordResetCode(auth, code)
-      await confirmPasswordReset(auth, code, password)
+      await confirmPasswordReset(auth, code, newPassword)
       window.history.replaceState({},document.title,window.location.pathname)
-      setPasswordRecovery(false); setPassword(''); setConfirmPassword(''); setRecoveryCode('')
+      setPasswordRecovery(false); setNewPassword(''); setConfirmNewPassword(''); setRecoveryCode('')
       setAuthMode('login')
       setNotice({type:'success',text:'Password updated. Please sign in with your new password.'})
     } catch (e) {
@@ -151,7 +153,7 @@ export default function App() {
   if(!authReady) return <div className="app-loading"><LoaderCircle className="spin" size={28}/><p>Opening your study space…</p></div>
 
   if (!user) {
-    if (passwordRecovery) return <div className="auth-shell"><div className="auth-top"><Brand/><span className="top-links">Password recovery</span></div><main className="auth-main"><section className="panel auth-card recovery-inline"><div className="panel-heading"><span className="icon-tile"><KeyRound size={23}/></span><div><h2>Choose a new password</h2><p>Enter the new password for your account.</p></div></div><form onSubmit={updateRecoveredPassword}><Field label="New password" value={password} onChange={setPassword} type="password" placeholder="At least 6 characters" required/><Field label="Confirm new password" value={confirmPassword} onChange={setConfirmPassword} type="password" placeholder="Enter it again" required/><Button type="submit" disabled={authBusy}>{authBusy?'Updating…':'Update password'} <ArrowRight size={16}/></Button></form>{notice&&<div className={`notice notice-${notice.type}`}>{notice.text}</div>}<button className="inline-link recovery-back" type="button" onClick={()=>{setPasswordRecovery(false);setPassword('');setConfirmPassword('');window.history.replaceState({},document.title,window.location.pathname);setAuthMode('login')}}>Back to sign in</button></section></main></div>
+    if (passwordRecovery) return <div className="auth-shell"><div className="auth-top"><Brand/><span className="top-links">Password recovery</span></div><main className="auth-main"><section className="panel auth-card recovery-inline"><div className="panel-heading"><span className="icon-tile"><KeyRound size={23}/></span><div><h2>Choose a new password</h2><p>Enter the new password for your account.</p></div></div><form onSubmit={updateRecoveredPassword}><Field label="New password" value={newPassword} onChange={setNewPassword} type="password" placeholder="At least 6 characters" required/><Field label="Confirm new password" value={confirmNewPassword} onChange={setConfirmNewPassword} type="password" placeholder="Enter it again" required/><Button type="submit" disabled={authBusy}>{authBusy?'Updating…':'Update password'} <ArrowRight size={16}/></Button></form>{notice&&<div className={`notice notice-${notice.type}`}>{notice.text}</div>}<button className="inline-link recovery-back" type="button" onClick={()=>{setPasswordRecovery(false);setNewPassword('');setConfirmNewPassword('');window.history.replaceState({},document.title,window.location.pathname);setAuthMode('login')}}>Back to sign in</button></section></main></div>
     return <div className="auth-shell">
       <div className="auth-top"><Brand/><div className="top-links"><a href="#features">Features</a><a href="#how">How it works</a><a href="#about">About</a></div><button className="button button-primary top-login" onClick={()=>{setAuthMode('login');window.scrollTo({top:0,behavior:'smooth'})}}>Log in</button></div>
       <main className="auth-main">
