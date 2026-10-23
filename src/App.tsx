@@ -303,14 +303,11 @@ export default function App() {
     const routinePayload=planned.map(p=>({subject_id:p.subject_id,subject_name:p.subject_name,day_of_week:p.day_of_week,start_time:p.start_time,end_time:p.end_time}))
     const {error:saveError}=await supabase.rpc('replace_planned_study_sessions',{p_sessions:routinePayload})
     if(saveError){
-      const {error:delError}=await supabase.from('study_sessions').delete().eq('user_id',user.id).eq('status','planned')
-      if(!delError){
-        const directPayload=planned.map(p=>({user_id:user.id,subject_id:p.subject_id,subject_name:p.subject_name,day_of_week:p.day_of_week,start_time:p.start_time,end_time:p.end_time,status:'planned' as const}))
-        const {error:insError}=await supabase.from('study_sessions').insert(directPayload)
-        if(insError){setPlanBusy(false);setNotice({type:'error',text:'Could not save the generated routine. Your previous routine has been preserved.'});return}
-      } else {
-        setPlanBusy(false);setNotice({type:'error',text:'Could not save the generated routine. Your previous routine has been preserved.'});return
-      }
+      // Never delete the user's current routine as a fallback. The RPC replaces sessions
+      // atomically; if it fails, leave existing data untouched and surface the real error.
+      setPlanBusy(false)
+      setNotice({type:'error',text:`Could not save the generated routine: ${saveError.message || saveError.code || 'unknown database error'}. Your existing routine was not changed.`})
+      return
     }
     const {data,error}=await supabase.from('study_sessions').select('*').eq('user_id',user.id).order('day_of_week').order('start_time')
     if(error){setPlanBusy(false);setNotice({type:'error',text:'Routine saved, but it could not be refreshed. Reload the page to see it.'});return}
