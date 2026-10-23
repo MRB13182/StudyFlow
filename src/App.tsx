@@ -84,13 +84,6 @@ export default function App() {
     setLoadingData(false)
   }, [user?.uid])
 
-  const greetingName = user?.displayName || user?.email?.split('@')[0] || 'Student'
-  const completed = sessions.filter(s=>s.status==='completed').length
-  const studyMinutes = 0
-  const today = (new Date().getDay()+6)%7
-  const todaySessions = sessions.filter(s=>s.day_of_week===today).sort((a,b)=>a.start_time.localeCompare(b.start_time))
-  const noticeDismiss = () => setNotice(null)
-
   async function handleAuth(e: FormEvent) {
     e.preventDefault()
     setAuthBusy(true); setNotice(null)
@@ -158,6 +151,13 @@ export default function App() {
   const noticeDismiss = () => setNotice(null)
 
   // This integration uses Firebase Authentication only. No Firestore or Storage operations.
+  const greetingName = user?.displayName || user?.email?.split('@')[0] || 'Student'
+  const completed = 0
+  const studyMinutes = 0
+  const today = (new Date().getDay()+6)%7
+  const todaySessions: StudySession[] = []
+  const noticeDismiss = () => setNotice(null)
+
   const navItems:{label:View;icon:ReactNode}[]=[
     {label:'Home',icon:<Home size={18}/>},{label:'Profile',icon:<UserRound size={18}/>},
     {label:'Subjects',icon:<BookOpen size={18}/>},{label:'Block Time',icon:<CalendarClock size={18}/>},
