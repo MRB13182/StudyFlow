@@ -14,9 +14,13 @@ The client is pinned to the StudyFlow Supabase project and its public publishabl
 
 ## Authentication dashboard setup
 In Supabase Dashboard → Authentication → URL Configuration:
-- Set Site URL to the final deployed website origin.
-- Add that origin and your local development URL to the allowed redirect URLs.
-- Configure email confirmation and password-recovery settings/SMTP.
+- Set Site URL to the canonical deployed website origin (scheme + hostname only).
+- Add the canonical origin to allowed redirect URLs. Also add `http://localhost:3000/**` for local development and any exact production/preview origins where you intend to test.
+- If the canonical origin differs from the browser's current origin, set `VITE_SITE_URL` to that canonical origin at build time. Otherwise the app uses `window.location.origin`.
+- Under Authentication → Providers → Email, enable email signups and confirm-email as required for production.
+- Under Authentication → SMTP Settings, configure a verified custom SMTP provider for production. The built-in email service is rate-limited and intended for testing.
+- Under Authentication → Email Templates, confirm the confirmation link points to `{{ .RedirectTo }}` (or to the intended canonical URL), since the app supplies an explicit email redirect.
+- After configuration, test registration with an inbox you control, open the confirmation link, verify the browser returns to Study Flow, then log in. Test password recovery separately.
 
 ## Database
 The connected project contains `profiles`, `subjects`, `time_slots`, `study_sessions`, `study_plans`, and `user_preferences`. Owner-scoped RLS policies use `auth.uid()`. Database migrations live in `supabase/migrations/`.
