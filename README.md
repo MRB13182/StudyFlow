@@ -1,50 +1,43 @@
 # Study Flow
 
-Study Flow is a responsive React + TypeScript student planner using the supplied purple/blue visual design. Firebase is connected for **Email/Password Authentication** and optional Analytics only.
+Study Flow is a responsive React + TypeScript student planner using Supabase as its only backend.
 
-## Firebase setup
+## Stack
+- React + TypeScript + Vite
+- Supabase Auth for registration, login, logout, persistent sessions, email confirmation, and password recovery
+- Supabase Postgres for profiles, subjects, available/blocked time, study sessions, study plans, and preferences
+- Row Level Security (RLS) on all exposed user-data tables
 
-The web app uses the Firebase project `studyflow-71cdd` configured in `src/lib/firebase.ts`.
+## Supabase configuration
+Create a local `.env` file (not committed) or set these variables in your hosting provider:
 
-Before testing authentication:
+```dotenv
+VITE_SUPABASE_URL=https://vozxngzgtskudloxkxcs.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-key
+```
 
-1. Open [Firebase Authentication settings](https://console.firebase.google.com/project/studyflow-71cdd/authentication/providers).
-2. Enable **Email/Password** under Authentication → Sign-in method.
-3. Confirm your localhost and deployed site domains are allowed under Authentication → Settings → Authorized domains.
-4. Run locally or deploy using the commands below.
+The publishable key is intended for browser clients. Never place a Supabase secret or service-role key in frontend code.
 
-## Authentication behavior
+## Authentication dashboard setup
+In Supabase Dashboard → Authentication → URL Configuration:
+- Set Site URL to the deployed website's exact origin.
+- Add the production origin and local development URL (for example `http://localhost:5173/**`) to allowed redirects.
+- Configure email confirmation and password recovery templates/SMTP as needed.
 
-- Sign-up uses Firebase `createUserWithEmailAndPassword`.
-- Sign-in uses Firebase `signInWithEmailAndPassword`.
-- Successful sign-up and sign-in automatically open the dashboard using Firebase auth state.
-- Logout calls Firebase `signOut` and returns to the public authentication/landing screen.
-- Password reset requests use Firebase `sendPasswordResetEmail`.
-- Incorrect login shows exactly: `Email or password is incorrect`.
-- An already-registered email shows exactly: `User already exists. Please sign in`.
+## Database schema
+The StudyFlow project includes `profiles`, `subjects`, `time_slots`, `study_sessions`, `study_plans`, and `user_preferences`. Owner-scoped RLS policies use `auth.uid()`; validation constraints, indexes, timestamps, and per-user uniqueness constraints are included.
 
-No demo accounts or demo credentials are created.
-
-## Data scope
-
-Authentication is the only data service. There are **no Firestore or Firebase Storage imports, calls, collections, or uploads**. Profile fields are not saved. Study subjects, available/blocked periods, and routine sessions exist in React memory for the current page session only and disappear on refresh or when the app is reloaded.
-
-The study routine uses a local scheduling algorithm, not an external AI service.
+## No demo data
+No demo accounts, credentials, sample users, or seeded planner records are created. New users start with an empty planner.
 
 ## Run locally
-
-Requires Node.js and npm.
-
 ```bash
 npm install
 npm run dev
-```
-
-Production build:
-
-```bash
 npm run build
 npm run preview
 ```
 
-The repository is not automatically deployed; hosting and Firebase Authentication provider settings must be configured separately.
+Accounts from the former authentication provider are not automatically transferred; those users must register again or be explicitly migrated. The planner uses a deterministic scheduling algorithm based on saved data; no external AI service is configured.
+
+Never commit `.env` or server-side secrets.
