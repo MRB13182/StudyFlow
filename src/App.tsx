@@ -70,23 +70,11 @@ export default function App() {
   const [mobileNav,setMobileNav] = useState(false)
   const [loadingData,setLoadingData] = useState(false)
   // Firebase Authentication only; no database or profile storage.
-  const [profile,setProfile] = useState<null>(null)
+  const [profile] = useState<null>(null)
   const [subjects,setSubjects] = useState<Subject[]>([])
   const [slots,setSlots] = useState<TimeSlot[]>([])
   const [sessions,setSessions] = useState<StudySession[]>([])
-  const [subjectName,setSubjectName] = useState('')
-  const [units,setUnits] = useState('1')
-  const [topics,setTopics] = useState('')
-  const [duration,setDuration] = useState('60')
-  const [slotKind,setSlotKind] = useState<'available'|'blocked'>('available')
-  const [slotDay,setSlotDay] = useState('0')
-  const [slotStart,setSlotStart] = useState('09:00')
-  const [slotEnd,setSlotEnd] = useState('11:00')
-  const [editingProfile,setEditingProfile] = useState(false)
   const [planBusy,setPlanBusy] = useState(false)
-  const [passwordRecovery,setPasswordRecovery] = useState(() => window.location.hash.includes('type=recovery') || new URLSearchParams(window.location.search).get('flow') === 'password-reset')
-  const [newPassword,setNewPassword] = useState('')
-  const [confirmNewPassword,setConfirmNewPassword] = useState('')
 
   useEffect(() => onAuthStateChanged(auth, currentUser => {
     setUser(currentUser)
@@ -171,66 +159,20 @@ export default function App() {
       setNotice({type:'error',text:firebaseErrorMessage(e)})
     } finally { setAuthBusy(false) }
   }
-  const user = session?.user
-  const greetingName = profile?.full_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Student'
+  const greetingName = user?.displayName || user?.email?.split('@')[0] || 'Student'
   const completed = sessions.filter(s=>s.status==='completed').length
   const studyMinutes = sessions.filter(s=>s.status==='completed').reduce((sum,s)=>sum+Math.max(0,mins(s.end_time)-mins(s.start_time)),0)
   const today = (new Date().getDay()+6)%7
   const todaySessions = sessions.filter(s=>s.day_of_week===today).sort((a,b)=>a.start_time.localeCompare(b.start_time))
   const noticeDismiss = () => setNotice(null)
 
-  async function handleAuth(e: FormEvent) {
-    e.preventDefault()
-    if (!supabase) { setNotice({type:'error',text:'Supabase is not configured yet. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your deployment environment.'}); return }
-    if (authMode==='register' && password!==confirmPassword) { setNotice({type:'error',text:'Passwords do not match.'}); return }
-    if (authMode==='register' && password.length<8) { setNotice({type:'error',text:'Use a password with at least 8 characters.'}); return }
-    setAuthBusy(true); setNotice(null)
-    try {
-      if (authMode==='register') {
-        const {data,error} = await supabase.auth.signUp({email,password,options:{data:{full_name:fullName,class_name:className,school,username}}})
-        if (error) throw error
-        if (data.session) setNotice({type:'success',text:'Your account was created. Welcome to Study Flow!'})
-        else setNotice({type:'success',text:'Registration received. Check your email to verify your account, then log in.'})
-      } else if (authMode==='login') {
-        const {error} = await supabase.auth.signInWithPassword({email,password})
-        if (error) throw error
-        setNotice({type:'success',text:'You are signed in.'})
-      } else {
-        const {error} = await supabase.auth.resetPasswordForEmail(email,{redirectTo:`${window.location.origin}/?flow=password-reset`})
-        if (error) throw error
-        setNotice({type:'success',text:'If the address belongs to an account, a password reset email will arrive shortly.'})
-      }
-    } catch (e) { setNotice({type:'error',text:errorText(e)}) }
-    finally { setAuthBusy(false) }
-  }
-
-  async function signOut() {
-    if (!supabase) return
-    await supabase.auth.signOut()
-    setPasswordRecovery(false)
-    setView('Home'); setNotice({type:'success',text:'You have been signed out.'})
-  }
-  async function updatePassword(e: FormEvent) {
-    e.preventDefault()
-    if (!supabase) return
-    if (newPassword.length < 8) { setNotice({type:'error',text:'Use a password with at least 8 characters.'}); return }
-    if (newPassword !== confirmNewPassword) { setNotice({type:'error',text:'The passwords do not match.'}); return }
-    setAuthBusy(true); setNotice(null)
-    const {error} = await supabase.auth.updateUser({password:newPassword})
-    setAuthBusy(false)
-    if (error) { setNotice({type:'error',text:error.message}); return }
-    window.history.replaceState({}, document.title, window.location.pathname)
-    setPasswordRecovery(false); setNewPassword(''); setConfirmNewPassword('')
-    setNotice({type:'success',text:'Your password has been updated.'})
-  }
   // This integration uses Firebase Authentication only. No Firestore or Storage operations.
   const navItems:{label:View;icon:ReactNode}[]=[
     {label:'Home',icon:<Home size={18}/>},{label:'Profile',icon:<UserRound size={18}/>},
     {label:'Subjects',icon:<BookOpen size={18}/>},{label:'Block Time',icon:<CalendarClock size={18}/>},
     {label:'Routine',icon:<CalendarDays size={18}/>},{label:'Settings',icon:<SettingsIcon size={18}/>}
   ]
-  const slotsByDay=useMemo(()=>DAYS.map((_,day)=>slots.filter(s=>s.day_of_week===day)),[slots])
-  const sessionsByDay=useMemo(()=>DAYS.map((_,day)=>sessions.filter(s=>s.day_of_week===day).sort((a,b)=>a.start_time.localeCompare(b.start_time))),[sessions])
+  const sessionsByDay=DAYS.map((_,day)=>sessions.filter(s=>s.day_of_week===day).sort((a,b)=>a.start_time.localeCompare(b.start_time)))
 
   if(!authReady) return <div className="app-loading"><LoaderCircle className="spin" size={28}/><p>Opening your study space…</p></div>
   if(passwordRecovery && !user) return <div className="auth-shell"><main className="auth-main recovery-inline"><form className="panel auth-card" onSubmit={updateRecoveredPassword}><div className="panel-heading"><span className="icon-tile"><KeyRound size={23}/></span><div><h2>Choose a new password</h2><p>Use the reset link from your email.</p></div></div><Field label="Reset code (if not in the URL)" value={recoveryCode} onChange={setRecoveryCode} placeholder="Paste the oobCode only"/><Field label="New password" value={newPassword} onChange={setNewPassword} type="password" required/><Field label="Confirm new password" value={confirmNewPassword} onChange={setConfirmNewPassword} type="password" required/><Button type="submit" disabled={authBusy}>{authBusy?'Updating…':'Update password'}</Button><button className="inline-link" type="button" onClick={()=>{setPasswordRecovery(false);setAuthMode('login');window.history.replaceState({},document.title,window.location.pathname)}}>Back to sign in</button>{notice&&<div className={`notice notice-${notice.type}`}>{notice.text}</div>}</form></main></div>
@@ -279,7 +221,7 @@ export default function App() {
       {view==='Subjects'&&<div className="page-stack"><section className="panel page-panel"><div className="page-heading"><span className="icon-tile"><BookOpen size={23}/></span><div><h1>Subject library</h1><p>Keep your subjects and topics ready for planning.</p></div></div><form className="subject-form" onSubmit={addSubject}><Field label="Subject name" value={subjectName} onChange={setSubjectName} placeholder="e.g. Mathematics" required/><Field label="Units" value={units} onChange={setUnits} type="number" required/><Field label="Preferred session (minutes)" value={duration} onChange={setDuration} type="number" required/><label className="field field-wide"><span>Chapters / topics</span><textarea value={topics} onChange={e=>setTopics(e.target.value)} placeholder="Add chapter names or topics…" rows={3}/></label><div className="form-actions"><Button type="submit"><Plus size={17}/> Save subject</Button></div></form></section><section className="panel page-panel"><div className="panel-title-row"><div><h2>Your subjects ({subjects.length})</h2><p>Saved to your account.</p></div></div>{subjects.length===0?<EmptyState title="Your subject list is empty" description="Add a subject above. No sample subjects are preloaded."/>:<div className="saved-subjects">{subjects.map((s,i)=><div className="saved-subject" key={s.id}><span className={`subject-bullet bullet-${i%4}`}>{s.name.slice(0,1).toUpperCase()}</span><div className="saved-subject-main"><strong>{s.name}</strong><span>{s.units} {s.units===1?'unit':'units'} · {s.duration_minutes} minutes per session</span>{s.topics&&<p>{s.topics}</p>}</div><button className="icon-button danger-icon" aria-label={`Delete ${s.name}`} onClick={()=>deleteSubject(s.id)}><Trash2 size={17}/></button></div>)}</div>}</section></div>}
       {view==='Block Time'&&<div className="page-stack"><section className="panel page-panel"><div className="page-heading"><span className="icon-tile"><CalendarClock size={23}/></span><div><h1>Time availability</h1><p>Tell Study Flow when you can — and cannot — study.</p></div></div><form className="time-form" onSubmit={addSlot}><label className="field"><span>Time type</span><select value={slotKind} onChange={e=>setSlotKind(e.target.value as 'available'|'blocked')}><option value="available">Available time — can study</option><option value="blocked">Block time — can't study</option></select></label><label className="field"><span>Day of the week</span><select value={slotDay} onChange={e=>setSlotDay(e.target.value)}>{DAYS.map((d,i)=><option key={d} value={i}>{d}</option>)}</select></label><Field label="Start time" value={slotStart} onChange={setSlotStart} type="time" required/><Field label="End time" value={slotEnd} onChange={setSlotEnd} type="time" required/><div className="form-actions"><Button type="submit"><Plus size={17}/> Add {slotKind==='blocked'?'blocked time':'available time'}</Button></div></form></section><div className="time-cards"><section className="panel page-panel"><div className="panel-title-row"><div><h2><span className="status-dot dot-available"/> Available time</h2><p>Periods when you can study.</p></div><span className="count-pill">{slots.filter(s=>s.kind==='available').length}</span></div><SlotList slots={slots.filter(s=>s.kind==='available')} onDelete={deleteSlot}/></section><section className="panel page-panel blocked-panel"><div className="panel-title-row"><div><h2><span className="status-dot dot-blocked"/> Block time</h2><p>Protected periods when you cannot study.</p></div><span className="count-pill">{slots.filter(s=>s.kind==='blocked').length}</span></div><SlotList slots={slots.filter(s=>s.kind==='blocked')} onDelete={deleteSlot}/></section></div></div>}
       {view==='Routine'&&<section className="panel page-panel"><div className="page-heading"><span className="icon-tile"><CalendarDays size={23}/></span><div><h1>Weekly study routine</h1><p>Built from your saved subjects and availability.</p></div><div className="heading-spacer"/><Button onClick={generatePlan} disabled={planBusy}>{planBusy?<LoaderCircle size={16} className="spin"/>:<Sparkles size={16}/>} Generate again</Button></div>{sessions.length===0?<EmptyState title="Your routine is ready to be created" description="Add subjects and available time, then generate your first study plan." icon={<CalendarDays size={22}/>}/>:<div className="calendar-wrap"><div className="week-grid"><div className="week-label">TIME</div>{DAY_SHORT.map((d,i)=><div className={i===today?'week-day today-day':'week-day'} key={d}>{d}</div>)}{['08:00','10:00','12:00','14:00','16:00','18:00','20:00'].map((t,ri)=><><div className="time-label" key={'t'+t}>{fmtTime(t)}</div>{DAY_SHORT.map((d,di)=>{const matches=sessionsByDay[di].filter(s=>mins(s.start_time)>=mins(t)&&mins(s.start_time)<mins(t)+120);return <div className="calendar-cell" key={d+t}>{matches.map(s=><button key={s.id} className={`calendar-session ${s.status==='completed'?'session-done':''} color-${subjects.findIndex(sb=>sb.id===s.subject_id)%4}`} title={`${s.subject_name}, ${fmtTime(s.start_time)}–${fmtTime(s.end_time)}`} onClick={()=>toggleSession(s)}><strong>{s.subject_name}</strong><small>{fmtTime(s.start_time)}–{fmtTime(s.end_time)}</small><span>{s.status==='completed'?'Completed':'Mark complete'}</span></button>)}</div>})}</>)}</div><p className="calendar-hint"><CheckCircle2 size={15}/> Click a session to toggle its completion status.</p></div>}</section>}
-      {view==='Settings'&&<div className="page-stack"><section className="panel page-panel"><div className="page-heading"><span className="icon-tile"><SettingsIcon size={23}/></span><div><h1>Settings</h1><p>Account and study planner preferences.</p></div></div><div className="settings-list"><div className="settings-item"><span className="settings-icon"><ShieldCheck size={19}/></span><div><strong>Account security</strong><p>Signed in as {user.email}. Password recovery is handled by Supabase Auth.</p></div><button className="subtle-link" onClick={()=>{setEmail(user.email||'');setAuthMode('reset');void supabase?.auth.resetPasswordForEmail(user.email||'',{redirectTo:`${window.location.origin}/?flow=password-reset`}).then(({error})=>setNotice(error?{type:'error',text:error.message}:{type:'success',text:'If your account is eligible, a reset email will arrive shortly.'}))}}>Send reset email <ArrowRight size={15}/></button></div><div className="settings-item"><span className="settings-icon"><UserRound size={19}/></span><div><strong>Profile settings</strong><p>Update your name, class, school, and username.</p></div><button className="subtle-link" onClick={()=>setView('Profile')}>Manage <ArrowRight size={15}/></button></div><div className="settings-item"><span className="settings-icon"><CalendarDays size={19}/></span><div><strong>Routine and study plan</strong><p>Manage your saved subjects and time rules.</p></div><button className="subtle-link" onClick={()=>setView('Routine')}>Open routine <ArrowRight size={15}/></button></div></div></section><section className="panel page-panel account-warning"><h2>Sign out</h2><p>Sign out from this device. Your saved subjects, profile, time slots, and sessions remain in your account.</p><Button variant="secondary" onClick={signOut}><LogOut size={17}/> Sign out</Button></section></div>}
+      {view==='Settings'&&<div className="page-stack"><section className="panel page-panel"><div className="page-heading"><span className="icon-tile"><SettingsIcon size={23}/></span><div><h1>Settings</h1><p>Account and study planner preferences.</p></div></div><div className="settings-list"><div className="settings-item"><span className="settings-icon"><ShieldCheck size={19}/></span><div><strong>Account security</strong><p>Signed in as {user.email}. Password recovery is handled by Supabase Auth.</p></div><button className="subtle-link" onClick={()=>{setEmail(user.email||'');setAuthMode('reset');void supabase?.auth.resetPasswordForEmail(user.email||'',{redirectTo:`${window.location.origin}/?flow=password-reset`}).then(({error})=>setNotice(error?{type:'error',text:error.message}:{type:'success',text:'If your account is eligible, a reset email will arrive shortly.'}))}}>Send reset email <ArrowRight size={15}/></button></div><div className="settings-item"><span className="settings-icon"><UserRound size={19}/></span><div><strong>Profile settings</strong><p>Update your name, class, school, and username.</p></div><button className="subtle-link" onClick={()=>setView('Profile')}>Manage <ArrowRight size={15}/></button></div><div className="settings-item"><span className="settings-icon"><CalendarDays size={19}/></span><div><strong>Routine and study plan</strong><p>Manage your saved subjects and time rules.</p></div><button className="subtle-link" onClick={()=>setView('Routine')}>Open routine <ArrowRight size={15}/></button></div></div></section><section className="panel page-panel account-warning"><h2>Sign out</h2><p>Sign out from this device. Only your Firebase Authentication account is connected; study data is not stored yet.</p><Button variant="secondary" onClick={signOutUser}><LogOut size={17}/> Sign out</Button></section></div>}
       </>}
       <footer className="workspace-footer"><Brand small/><span>Make room for focused learning.</span><span>© {new Date().getFullYear()} Study Flow</span></footer>
     </main>
