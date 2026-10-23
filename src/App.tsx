@@ -60,12 +60,10 @@ export default function App() {
   const [confirmPassword,setConfirmPassword] = useState('')
   const [recoveryCode,setRecoveryCode] = useState('')
   const [passwordRecovery,setPasswordRecovery] = useState(() => new URLSearchParams(window.location.search).get('mode') === 'resetPassword' && new URLSearchParams(window.location.search).has('oobCode'))
-
   const [notice,setNotice] = useState<Notice|null>(null)
   const [view,setView] = useState<View>('Home')
   const [mobileNav,setMobileNav] = useState(false)
-  // Firebase Authentication only; no database or profile storage.
-  const [profile] = useState<null>(null)
+
   const subjects: Subject[] = []
   const slots: TimeSlot[] = []
   const sessions: StudySession[] = []
@@ -74,6 +72,13 @@ export default function App() {
     setUser(currentUser)
     setAuthReady(true)
   }), [])
+
+  const greetingName = user?.displayName || user?.email?.split('@')[0] || 'Student'
+  const completed = 0
+  const studyMinutes = 0
+  const today = (new Date().getDay()+6)%7
+  const todaySessions: StudySession[] = []
+  const noticeDismiss = () => setNotice(null)
 
   async function handleAuth(e: FormEvent) {
     e.preventDefault()
@@ -149,7 +154,6 @@ export default function App() {
   const sessionsByDay=DAYS.map((_,day)=>sessions.filter(s=>s.day_of_week===day).sort((a,b)=>a.start_time.localeCompare(b.start_time)))
 
   if(!authReady) return <div className="app-loading"><LoaderCircle className="spin" size={28}/><p>Opening your study space…</p></div>
-
 
   if(!user) return <div className="auth-shell">
     <div className="auth-top"><Brand/><div className="top-links"><a href="#features">Features</a><a href="#how">How it works</a><a href="#about">About</a></div><button className="button button-primary top-login" onClick={()=>{setAuthMode('login');window.scrollTo({top:0,behavior:'smooth'})}}>Log in</button></div>
