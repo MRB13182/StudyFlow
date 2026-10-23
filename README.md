@@ -1,47 +1,71 @@
 # Study Flow
 
-A responsive React + TypeScript student planner with the original Study Flow purple/blue visual theme.
+Study Flow is a responsive React + TypeScript student planner styled from the supplied purple/blue visual reference. It includes account registration and login, email password-reset links, a profile, subject management, available/blocked time, weekly routine generation, completion tracking, and settings.
 
-## Firebase Authentication setup
+## Important: services must be configured
 
-The app now uses **Firebase Authentication only**. It does not use Firestore, Realtime Database, or Firebase Storage. Student profile fields, subjects, time slots, and study sessions are deliberately not persisted, as requested.
+This repository contains no demo accounts and does not seed fake data. Auth and storage are intentionally disabled until you connect a Supabase project.
 
-The Firebase web configuration is in `src/lib/firebase.ts` and reads optional `VITE_FIREBASE_*` overrides from the environment. The supplied project configuration is included as the default.
+### 1. Create a Supabase project
 
-### Enable email/password sign-in
+Create a project in Supabase, then open **SQL Editor** and run the complete contents of [`supabase/schema.sql`](./supabase/schema.sql). It creates the profile, subjects, time-slot, and study-session tables, ownership policies, and profile creation trigger. Row Level Security restricts each account to its own records.
 
-1. Open the [Firebase Console](https://console.firebase.google.com/) and select project `studyflow-71cdd`.
-2. Go to **Authentication → Sign-in method**.
-3. Enable **Email/Password**.
-4. In **Authentication → Settings → Authorized domains**, ensure your local and deployed domains are allowed.
-5. Make sure the project is accessible to you and that the provided configuration belongs to that project.
+### 2. Configure environment variables
 
-### Run locally
+Copy `.env.example` to `.env.local` and set:
 
-Requires Node.js LTS.
+```dotenv
+VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_PUBLISHABLE_OR_ANON_KEY
+```
+
+Use the Supabase project's publishable/anon key only; never put a service-role key in the browser. In deployment, add the same values as environment variables in your hosting provider. Do not commit `.env.local`.
+
+### 3. Configure authentication
+
+In Supabase Authentication settings:
+- Configure the site URL for your deployed site.
+- Add your local development URL and deployed URL to allowed redirect URLs.
+- Configure email verification and an email provider as appropriate.
+- Customize verification and password-reset email templates if needed.
+
+A reset link is sent via Supabase Auth. Public responses do not reveal whether an email address belongs to an account.
+
+### 4. Run locally
+
+Requires a current Node.js LTS release.
 
 ```bash
 npm install
+cp .env.example .env.local
+# Update .env.local with your Supabase values
 npm run dev
 ```
 
-Build:
+To create a production build:
 
 ```bash
 npm run build
 npm run preview
 ```
 
-## Authentication behavior
+## Features
 
-- Email/password sign-in with Firebase Authentication.
-- Email/password registration; successful signup automatically signs in and opens the dashboard.
-- Invalid sign-in credentials show: `Email or password is incorrect`.
-- Existing registration email shows: `User already exists. Please sign in`.
-- Password reset email uses Firebase Authentication.
-- Sign-out calls Firebase Auth and returns to the login screen.
-- No default user, demo credentials, test account, or pre-seeded user records.
+- Responsive public landing page and real registration/login forms
+- No default account, demo credentials, mock user, or seeded example subjects
+- Supabase Auth session persistence and email reset flow
+- Account-owned profile, subjects, available time, blocked time, and study sessions
+- Weekly routine generation based on saved subjects and time slots, skipping known blocked periods
+- Session completion stored against the authenticated account
+- Responsive dashboard, collapsible mobile navigation, empty/loading/error states
 
-## Scope notes
+## Current limitations
 
-This update intentionally does not add profile persistence, Firestore, or Storage. The existing Study Flow visual layout is preserved; non-authentication dashboard sections show empty-state messages because persisting their information is outside the requested scope. Analytics is not initialized because authentication-only mode does not require Firebase Analytics.
+- “AI Study Plan” currently uses a deterministic local scheduling algorithm; no AI provider/API has been connected yet. It does not claim that an LLM generated the plan.
+- This is a deployable starter, not an already deployed website. Supabase credentials, schema setup, email delivery, and hosting still need to be configured and tested in your own accounts.
+- The routine generator replaces previously planned (not completed) sessions; completed sessions are preserved.
+- The current routine view is a weekly, click-to-complete calendar. Drag-and-drop rescheduling, notifications, and recurring streak calculations are not included.
+
+## Security notes
+
+The frontend only uses the Supabase publishable/anon key. Database RLS protects rows by authenticated user ID. Never expose a Supabase service-role key in client code. For public production deployment, set appropriate email rate limits and URL allow-lists in Supabase and confirm password recovery works on the deployed domain.
