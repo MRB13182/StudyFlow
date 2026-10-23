@@ -6,8 +6,8 @@ import {
   Menu, Plus, Settings as SettingsIcon, ShieldCheck, Sparkles, Trash2, UserRound,
   X, Zap, Eye, EyeOff, CalendarClock, ListChecks
 } from 'lucide-react'
-import { createUserWithEmailAndPassword, onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signOut as firebaseSignOut, type User, confirmPasswordReset } from 'firebase/auth'
-import { auth } from './lib/firebase'
+import { supabase } from './lib/supabase'
+import type { User } from '@supabase/supabase-js'
 
 type Profile = { id: string; full_name: string; class_name: string; school: string; exam_year: string; username: string; about: string }
 type Subject = { id: string; name: string; units: number; topics: string; duration_minutes: number; created_at?: string }
@@ -76,21 +76,62 @@ export default function App() {
   const [confirmNewPassword,setConfirmNewPassword] = useState('')
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser)
+    let alive = true
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!alive) return
+      if (error) setNotice({type:'error',text:'Could not restore your session. Please sign in again.'})
+      setUser((data.session?.user as User | undefined) ?? null)
+      setAuthReady(true)
+    }).catch(() => {
+      if (!alive) return
+      setAuthReady(true)
+      setNotice({type:'error',text:'Could not connect to Supabase. Check your connection and configuration.'})
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser((session?.user as User | undefined) ?? null)
+      if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true)
       setAuthReady(true)
     })
-    return unsubscribe
+    if (window.location.hash.includes('type=recovery')) setPasswordRecovery(true)
+    return () => { alive = false; subscription.unsubscribe() }
   }, [])
 
-  // Firebase Authentication only: planner details are intentionally not persisted.
   useEffect(() => {
-    setProfile(null)
-    setSubjects([])
-    setSlots([])
-    setSessions([])
-    setLoadingData(false)
-  }, [user?.uid])
+    let cancelled = false
+    async function loadUserData() {
+      if (!user) {
+        setProfile(null); setSubjects([]); setSlots([]); setSessions([])
+        setLoadingData(false)
+        return
+      }
+      setLoadingData(true)
+      try {
+        const [pr,sr,tr,rr] = await Promise.all([
+          supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
+          supabase.from('subjects').select('*').eq('user_id', user.id).order('created_at', {ascending:true}),
+          supabase.from('time_slots').select('*').eq('user_id', user.id).order('day_of_week').order('start_time'),
+          supabase.from('study_sessions').select('*').eq('user_id', user.id).order('day_of_week').order('start_time'),
+        ])
+        if (pr.error) throw pr.error
+        if (sr.error) throw sr.error
+        if (tr.error) throw tr.error
+        if (rr.error) throw rr.error
+        if (cancelled) return
+        const p=pr.data
+        setProfile(p ? {id:p.id,full_name:p.full_name||'',class_name:p.class_name||'',school:p.school||'',exam_year:p.exam_year?String(p.exam_year):'',username:p.username||'',about:p.about||''} : {
+          id:user.id,full_name:user.user_metadata?.full_name||'',class_name:'',school:'',exam_year:'',username:user.user_metadata?.username||'',about:''
+        })
+        setSubjects((sr.data||[]).map((s:any)=>({id:s.id,name:s.name,units:s.units,topics:s.topics,duration_minutes:s.duration_minutes,created_at:s.created_at})))
+        setSlots((tr.data||[]).map((s:any)=>({id:s.id,day_of_week:s.day_of_week,start_time:String(s.start_time).slice(0,5),end_time:String(s.end_time).slice(0,5),kind:s.kind,label:s.label})))
+        setSessions((rr.data||[]).map((s:any)=>({id:s.id,subject_id:s.subject_id,subject_name:s.subject_name,day_of_week:s.day_of_week,start_time:String(s.start_time).slice(0,5),end_time:String(s.end_time).slice(0,5),status:s.status})))
+      } catch {
+        if (!cancelled) setNotice({type:'error',text:'Could not load your saved Study Flow data. Refresh and try again.'})
+      } finally { if (!cancelled) setLoadingData(false) }
+    }
+    void loadUserData()
+    return () => { cancelled = true }
+  }, [user?.id])
+
   const greetingName = user?.displayName || user?.email?.split('@')[0] || 'Student'
   const completed = sessions.filter(s=>s.status==='completed').length
   const studyMinutes = sessions.filter(s=>s.status==='completed').reduce((sum,s)=>sum+Math.max(0,mins(s.end_time)-mins(s.start_time)),0)
@@ -98,99 +139,138 @@ export default function App() {
   const todaySessions = sessions.filter(s=>s.day_of_week===today).sort((a,b)=>a.start_time.localeCompare(b.start_time))
   const noticeDismiss = () => setNotice(null)
 
-  function firebaseAuthMessage(error: unknown, mode: 'login'|'register'|'reset') {
+  function authErrorMessage(error: unknown, mode: 'login'|'register'|'reset') {
     const code = typeof error === 'object' && error !== null && 'code' in error ? String((error as {code?: unknown}).code || '') : ''
-    if (mode === 'register' && code === 'auth/email-already-in-use') return 'User already exists. Please sign in'
-    if (mode === 'login' && ['auth/invalid-credential','auth/invalid-login-credentials','auth/wrong-password','auth/user-not-found','auth/invalid-email'].includes(code)) return 'Email or password is incorrect'
-    if (mode === 'reset' && code === 'auth/invalid-email') return 'Enter a valid email address.'
-    if (code === 'auth/weak-password') return 'Use a stronger password with at least 6 characters.'
-    if (code === 'auth/too-many-requests') return 'Too many attempts. Please wait and try again.'
-    if (code === 'auth/network-request-failed') return 'Network error. Check your connection and try again.'
-    return errorText(error)
+    const message = errorText(error).toLowerCase()
+    if (mode === 'register' && (code === 'user_already_exists' || message.includes('already registered'))) return 'An account with this email already exists. Please sign in.'
+    if (mode === 'login' && (code === 'invalid_credentials' || message.includes('invalid login credentials'))) return 'Email or password is incorrect.'
+    if (mode === 'reset' && (code === 'validation_failed' || code === 'email_address_invalid')) return 'Enter a valid email address.'
+    if (code === 'weak_password' || message.includes('password should be')) return 'Use a stronger password with at least 8 characters.'
+    if (code === 'over_request_rate_limit' || code === 'too_many_requests') return 'Too many attempts. Please wait and try again.'
+    if (message.includes('fetch') || message.includes('network')) return 'Network error. Check your connection and try again.'
+    return 'Something went wrong. Please try again.'
   }
 
   async function handleAuth(e: FormEvent) {
     e.preventDefault()
     if (authMode==='register' && password!==confirmPassword) { setNotice({type:'error',text:'Passwords do not match.'}); return }
-    if (authMode==='register' && password.length<6) { setNotice({type:'error',text:'Use a password with at least 6 characters.'}); return }
+    if (authMode==='register' && password.length<8) { setNotice({type:'error',text:'Use a password with at least 8 characters.'}); return }
     setAuthBusy(true); setNotice(null)
     try {
       if (authMode==='register') {
-        await createUserWithEmailAndPassword(auth,email.trim(),password)
-        setNotice({type:'success',text:'Your account was created. Welcome to Study Flow!'})
+        const {data,error} = await supabase.auth.signUp({
+          email:email.trim(),password,
+          options:{data:{full_name:fullName.trim(),username:username.trim()||null},emailRedirectTo:window.location.origin}
+        })
+        if(error) throw error
+        setNotice({type:'success',text:data.session?'Your account was created. Welcome to Study Flow!':'Account created. Check your email to confirm your address before logging in.'})
       } else if (authMode==='login') {
-        await signInWithEmailAndPassword(auth,email.trim(),password)
+        const {error}=await supabase.auth.signInWithPassword({email:email.trim(),password})
+        if(error) throw error
         setNotice({type:'success',text:'You are signed in.'})
       } else {
-        await sendPasswordResetEmail(auth,email.trim())
+        const {error}=await supabase.auth.resetPasswordForEmail(email.trim(),{redirectTo:window.location.origin})
+        if(error) throw error
         setNotice({type:'success',text:'If the address belongs to an account, a password reset email will arrive shortly.'})
       }
-    } catch (e) { setNotice({type:'error',text:firebaseAuthMessage(e,authMode)}) }
+    } catch(error) { setNotice({type:'error',text:authErrorMessage(error,authMode)}) }
     finally { setAuthBusy(false) }
   }
 
   async function signOut() {
     try {
-      await firebaseSignOut(auth)
-      setPasswordRecovery(false); setAuthMode('login'); setView('Home')
+      const {error}=await supabase.auth.signOut()
+      if(error) throw error
+      setPasswordRecovery(false);setAuthMode('login');setView('Home')
       setNotice({type:'success',text:'You have been signed out.'})
-    } catch (e) { setNotice({type:'error',text:errorText(e)}) }
+    } catch(error) { setNotice({type:'error',text:errorText(error)}) }
   }
 
-  async function updatePassword(e: FormEvent) {
+  async function updatePassword(e:FormEvent) {
     e.preventDefault()
-    const oobCode = new URLSearchParams(window.location.search).get('oobCode')
-    if (!oobCode) { setNotice({type:'error',text:'This password reset link is invalid or incomplete.'}); return }
-    if (newPassword.length<6) { setNotice({type:'error',text:'Use a password with at least 6 characters.'}); return }
-    if (newPassword!==confirmNewPassword) { setNotice({type:'error',text:'The passwords do not match.'}); return }
-    setAuthBusy(true); setNotice(null)
+    if(!passwordRecovery){setNotice({type:'error',text:'Open the password reset link sent to your email first.'});return}
+    if(newPassword.length<8){setNotice({type:'error',text:'Use a password with at least 8 characters.'});return}
+    if(newPassword!==confirmNewPassword){setNotice({type:'error',text:'The passwords do not match.'});return}
+    setAuthBusy(true);setNotice(null)
     try {
-      await confirmPasswordReset(auth,oobCode,newPassword)
+      const {error}=await supabase.auth.updateUser({password:newPassword})
+      if(error)throw error
       window.history.replaceState({},document.title,window.location.pathname)
       setPasswordRecovery(false);setNewPassword('');setConfirmNewPassword('');setAuthMode('login')
-      setNotice({type:'success',text:'Your password has been updated. Please sign in.'})
-    } catch(e) { setNotice({type:'error',text:firebaseAuthMessage(e,'reset')}) }
+      await supabase.auth.signOut()
+      setNotice({type:'success',text:'Your password has been updated. Please sign in again.'})
+    } catch(error) { setNotice({type:'error',text:authErrorMessage(error,'reset')}) }
     finally { setAuthBusy(false) }
   }
 
   async function saveProfile(e:FormEvent) {
     e.preventDefault()
-    setNotice({type:'info',text:'Firebase Authentication-only mode: profile information is not saved.'})
+    if(!user)return
+    setLoadingData(true)
+    try {
+      const {error}=await supabase.from('profiles').update({full_name:fullName.trim(),class_name:className.trim(),school:school.trim(),username:username.trim()||null}).eq('id',user.id)
+      if(error)throw error
+      const {data,error:readError}=await supabase.from('profiles').select('*').eq('id',user.id).single()
+      if(readError)throw readError
+      setProfile({id:data.id,full_name:data.full_name,class_name:data.class_name,school:data.school,exam_year:data.exam_year?String(data.exam_year):'',username:data.username||'',about:data.about||''})
+      setEditingProfile(false);setNotice({type:'success',text:'Profile saved.'})
+    } catch {setNotice({type:'error',text:'Could not save the profile. The username may already be taken.'})}
+    finally {setLoadingData(false)}
   }
+
   async function addSubject(e:FormEvent) {
     e.preventDefault()
     const name=subjectName.trim()
     if(!name){setNotice({type:'error',text:'Enter a subject name.'});return}
-    const item:Subject={id:crypto.randomUUID(),name,units:Math.max(1,Number(units)||1),topics,duration_minutes:Math.max(15,Number(duration)||60)}
-    setSubjects(prev=>[...prev,item]);setSubjectName('');setUnits('1');setTopics('');setDuration('60')
-    setNotice({type:'success',text:'Subject added for this session only; nothing is saved to a database.'})
+    if(!user)return
+    const {data,error}=await supabase.from('subjects').insert({user_id:user.id,name,units:Math.min(500,Math.max(1,Number(units)||1)),topics,duration_minutes:Math.min(480,Math.max(15,Number(duration)||60))}).select('*').single()
+    if(error){setNotice({type:'error',text:error.code==='23505'?'A subject with this name already exists.':'Could not save this subject. Please try again.'});return}
+    setSubjects(prev=>[...prev,data as Subject]);setSubjectName('');setUnits('1');setTopics('');setDuration('60')
+    setNotice({type:'success',text:'Subject saved to your account.'})
   }
+
   async function deleteSubject(id:string) {
+    if(!user)return
+    const {error}=await supabase.from('subjects').delete().eq('id',id).eq('user_id',user.id)
+    if(error){setNotice({type:'error',text:'Could not delete this subject.'});return}
     setSubjects(prev=>prev.filter(s=>s.id!==id));setSessions(prev=>prev.filter(s=>s.subject_id!==id))
-    setNotice({type:'success',text:'Subject removed from this session.'})
+    setNotice({type:'success',text:'Subject deleted.'})
   }
+
   async function addSlot(e:FormEvent) {
     e.preventDefault()
     if(mins(slotEnd)<=mins(slotStart)){setNotice({type:'error',text:'End time must be later than start time.'});return}
-    const overlap=slots.some(s=>s.day_of_week===Number(slotDay)&&mins(slotStart)<mins(s.end_time)&&mins(slotEnd)>mins(s.start_time)&&(s.kind===slotKind))
+    const overlap=slots.some(s=>s.day_of_week===Number(slotDay)&&mins(slotStart)<mins(s.end_time)&&mins(slotEnd)>mins(s.start_time)&&s.kind===slotKind)
     if(overlap){setNotice({type:'error',text:`This time overlaps an existing ${slotKind} period for that day.`});return}
-    const item:TimeSlot={id:crypto.randomUUID(),day_of_week:Number(slotDay),start_time:slotStart,end_time:slotEnd,kind:slotKind}
+    if(!user)return
+    const {data,error}=await supabase.from('time_slots').insert({user_id:user.id,day_of_week:Number(slotDay),start_time:slotStart,end_time:slotEnd,kind:slotKind}).select('*').single()
+    if(error){setNotice({type:'error',text:'Could not save this time period.'});return}
+    const item:TimeSlot={id:data.id,day_of_week:data.day_of_week,start_time:String(data.start_time).slice(0,5),end_time:String(data.end_time).slice(0,5),kind:data.kind}
     setSlots(prev=>[...prev,item].sort((a,b)=>a.day_of_week-b.day_of_week||a.start_time.localeCompare(b.start_time)))
-    setNotice({type:'success',text:`${slotKind==='blocked'?'Blocked time':'Available time'} added for this session only.`})
+    setNotice({type:'success',text:`${slotKind==='blocked'?'Blocked time':'Available time'} saved.`})
   }
+
   async function deleteSlot(id:string) {
-    setSlots(prev=>prev.filter(s=>s.id!==id));setNotice({type:'success',text:'Time period removed from this session.'})
+    if(!user)return
+    const {error}=await supabase.from('time_slots').delete().eq('id',id).eq('user_id',user.id)
+    if(error){setNotice({type:'error',text:'Could not delete this time period.'});return}
+    setSlots(prev=>prev.filter(s=>s.id!==id));setNotice({type:'success',text:'Time period removed.'})
   }
+
   async function toggleSession(item:StudySession) {
+    if(!user)return
     const status=item.status==='completed'?'planned':'completed'
+    const {error}=await supabase.from('study_sessions').update({status}).eq('id',item.id).eq('user_id',user.id)
+    if(error){setNotice({type:'error',text:'Could not update this session.'});return}
     setSessions(prev=>prev.map(s=>s.id===item.id?{...s,status}:s))
   }
+
   async function generatePlan() {
     if(!subjects.length){setNotice({type:'info',text:'Add at least one subject before creating a study plan.'});setView('Subjects');return}
     const available=slots.filter(s=>s.kind==='available')
     if(!available.length){setNotice({type:'info',text:'Add the times when you can study before generating a routine.'});setView('Block Time');return}
     setPlanBusy(true);setNotice(null)
-    const blocks=slots.filter(s=>s.kind==='blocked'), planned:StudySession[]=[]
+    const blocks=slots.filter(s=>s.kind==='blocked'),planned:StudySession[]=[]
     const sortedSubjects=[...subjects].sort((a,b)=>b.duration_minutes-a.duration_minutes)
     for(const day of DAYS.map((_,i)=>i)) for(const win of available.filter(s=>s.day_of_week===day).sort((a,b)=>a.start_time.localeCompare(b.start_time))){
       let cursor=mins(win.start_time);const limit=mins(win.end_time)
@@ -205,8 +285,14 @@ export default function App() {
       }
     }
     if(!planned.length){setPlanBusy(false);setNotice({type:'error',text:'No suitable study sessions fit your available time and blocked periods. Adjust your time slots and try again.'});return}
-    setSessions(prev=>[...prev.filter(s=>s.status==='completed'),...planned])
-    setPlanBusy(false);setNotice({type:'success',text:`Created ${planned.length} temporary study sessions. They will disappear when this session ends.`});setView('Routine')
+    if(!user){setPlanBusy(false);return}
+    const {error:deleteError}=await supabase.from('study_sessions').delete().eq('user_id',user.id).eq('status','planned')
+    if(deleteError){setPlanBusy(false);setNotice({type:'error',text:'Could not replace the previous plan. Please try again.'});return}
+    const rows=planned.map(p=>({user_id:user.id,subject_id:p.subject_id,subject_name:p.subject_name,day_of_week:p.day_of_week,start_time:p.start_time,end_time:p.end_time,status:'planned'}))
+    const {data,error}=await supabase.from('study_sessions').insert(rows).select('*')
+    if(error){setPlanBusy(false);setNotice({type:'error',text:'Could not save the generated routine.'});return}
+    setSessions(prev=>[...prev.filter(s=>s.status==='completed'),...(data||[]).map((s:any)=>({id:s.id,subject_id:s.subject_id,subject_name:s.subject_name,day_of_week:s.day_of_week,start_time:String(s.start_time).slice(0,5),end_time:String(s.end_time).slice(0,5),status:s.status}))])
+    setPlanBusy(false);setNotice({type:'success',text:`Saved ${planned.length} study sessions to your account.`});setView('Routine')
   }
 
   const navItems:{label:View;icon:ReactNode}[]=[
@@ -259,10 +345,10 @@ export default function App() {
         <section className="panel content-panel"><div className="panel-title-row"><div><h2>Your subjects</h2><p>Only subjects you have added appear here.</p></div><Button variant="secondary" onClick={()=>setView('Subjects')}><Plus size={16}/> Add subject</Button></div>{subjects.length===0?<EmptyState title="No subjects yet" description="Add your first subject to start organizing your study plan." icon={<BookOpen size={22}/>}/>:<div className="subject-mini-grid">{subjects.slice(0,4).map((s,i)=><div className="subject-mini" key={s.id}><span className={`subject-bullet bullet-${i%4}`}>{s.name.slice(0,1).toUpperCase()}</span><div><strong>{s.name}</strong><small>{s.units} {s.units===1?'unit':'units'} · {s.duration_minutes} min/session</small></div><ArrowRight size={15}/></div>)}</div>}</section>
       </>}
       {view==='Profile'&&<section className="panel page-panel"><div className="page-heading"><span className="icon-tile"><UserRound size={23}/></span><div><h1>Your profile</h1><p>Manage the information connected to your account.</p></div><div className="heading-spacer"/><Button variant="secondary" onClick={()=>{setFullName(profile?.full_name||'');setClassName(profile?.class_name||'');setSchool(profile?.school||'');setUsername(profile?.username||'');setEditingProfile(!editingProfile)}}>{editingProfile?'Cancel':'Edit profile'}</Button></div>{!editingProfile?<div className="profile-overview"><div className="profile-avatar">{greetingName.slice(0,1).toUpperCase()}</div><div className="profile-info"><h2>{profile?.full_name||greetingName}</h2><p>{user?.email}</p><div className="profile-tags"><span>{profile?.class_name||'Class not set'}</span><span>{profile?.school||'School / college not set'}</span></div><p className="muted">{profile?.about||'Add information about yourself to personalize your study space.'}</p></div></div>:<form className="form-grid" onSubmit={saveProfile}><Field label="Full name" value={fullName} onChange={setFullName} required/><Field label="Class" value={className} onChange={setClassName}/><Field label="School / College" value={school} onChange={setSchool}/><Field label="Username" value={username} onChange={setUsername}/><div className="form-actions"><Button type="submit">Save changes</Button></div></form>}</section>}
-      {view==='Subjects'&&<div className="page-stack"><section className="panel page-panel"><div className="page-heading"><span className="icon-tile"><BookOpen size={23}/></span><div><h1>Subject library</h1><p>Keep your subjects and topics ready for planning.</p></div></div><form className="subject-form" onSubmit={addSubject}><Field label="Subject name" value={subjectName} onChange={setSubjectName} placeholder="e.g. Mathematics" required/><Field label="Units" value={units} onChange={setUnits} type="number" required/><Field label="Preferred session (minutes)" value={duration} onChange={setDuration} type="number" required/><label className="field field-wide"><span>Chapters / topics</span><textarea value={topics} onChange={e=>setTopics(e.target.value)} placeholder="Add chapter names or topics…" rows={3}/></label><div className="form-actions"><Button type="submit"><Plus size={17}/> Save subject</Button></div></form></section><section className="panel page-panel"><div className="panel-title-row"><div><h2>Your subjects ({subjects.length})</h2><p>Held in memory for this session only; not saved to a database.</p></div></div>{subjects.length===0?<EmptyState title="Your subject list is empty" description="Add a subject above. No sample subjects are preloaded."/>:<div className="saved-subjects">{subjects.map((s,i)=><div className="saved-subject" key={s.id}><span className={`subject-bullet bullet-${i%4}`}>{s.name.slice(0,1).toUpperCase()}</span><div className="saved-subject-main"><strong>{s.name}</strong><span>{s.units} {s.units===1?'unit':'units'} · {s.duration_minutes} minutes per session</span>{s.topics&&<p>{s.topics}</p>}</div><button className="icon-button danger-icon" aria-label={`Delete ${s.name}`} onClick={()=>deleteSubject(s.id)}><Trash2 size={17}/></button></div>)}</div>}</section></div>}
+      {view==='Subjects'&&<div className="page-stack"><section className="panel page-panel"><div className="page-heading"><span className="icon-tile"><BookOpen size={23}/></span><div><h1>Subject library</h1><p>Keep your subjects and topics ready for planning.</p></div></div><form className="subject-form" onSubmit={addSubject}><Field label="Subject name" value={subjectName} onChange={setSubjectName} placeholder="e.g. Mathematics" required/><Field label="Units" value={units} onChange={setUnits} type="number" required/><Field label="Preferred session (minutes)" value={duration} onChange={setDuration} type="number" required/><label className="field field-wide"><span>Chapters / topics</span><textarea value={topics} onChange={e=>setTopics(e.target.value)} placeholder="Add chapter names or topics…" rows={3}/></label><div className="form-actions"><Button type="submit"><Plus size={17}/> Save subject</Button></div></form></section><section className="panel page-panel"><div className="panel-title-row"><div><h2>Your subjects ({subjects.length})</h2><p>Saved securely to your account.</p></div></div>{subjects.length===0?<EmptyState title="Your subject list is empty" description="Add a subject above. No sample subjects are preloaded."/>:<div className="saved-subjects">{subjects.map((s,i)=><div className="saved-subject" key={s.id}><span className={`subject-bullet bullet-${i%4}`}>{s.name.slice(0,1).toUpperCase()}</span><div className="saved-subject-main"><strong>{s.name}</strong><span>{s.units} {s.units===1?'unit':'units'} · {s.duration_minutes} minutes per session</span>{s.topics&&<p>{s.topics}</p>}</div><button className="icon-button danger-icon" aria-label={`Delete ${s.name}`} onClick={()=>deleteSubject(s.id)}><Trash2 size={17}/></button></div>)}</div>}</section></div>}
       {view==='Block Time'&&<div className="page-stack"><section className="panel page-panel"><div className="page-heading"><span className="icon-tile"><CalendarClock size={23}/></span><div><h1>Time availability</h1><p>Tell Study Flow when you can — and cannot — study.</p></div></div><form className="time-form" onSubmit={addSlot}><label className="field"><span>Time type</span><select value={slotKind} onChange={e=>setSlotKind(e.target.value as 'available'|'blocked')}><option value="available">Available time — can study</option><option value="blocked">Block time — can't study</option></select></label><label className="field"><span>Day of the week</span><select value={slotDay} onChange={e=>setSlotDay(e.target.value)}>{DAYS.map((d,i)=><option key={d} value={i}>{d}</option>)}</select></label><Field label="Start time" value={slotStart} onChange={setSlotStart} type="time" required/><Field label="End time" value={slotEnd} onChange={setSlotEnd} type="time" required/><div className="form-actions"><Button type="submit"><Plus size={17}/> Add {slotKind==='blocked'?'blocked time':'available time'}</Button></div></form></section><div className="time-cards"><section className="panel page-panel"><div className="panel-title-row"><div><h2><span className="status-dot dot-available"/> Available time</h2><p>Periods when you can study.</p></div><span className="count-pill">{slots.filter(s=>s.kind==='available').length}</span></div><SlotList slots={slots.filter(s=>s.kind==='available')} onDelete={deleteSlot}/></section><section className="panel page-panel blocked-panel"><div className="panel-title-row"><div><h2><span className="status-dot dot-blocked"/> Block time</h2><p>Protected periods when you cannot study.</p></div><span className="count-pill">{slots.filter(s=>s.kind==='blocked').length}</span></div><SlotList slots={slots.filter(s=>s.kind==='blocked')} onDelete={deleteSlot}/></section></div></div>}
       {view==='Routine'&&<section className="panel page-panel"><div className="page-heading"><span className="icon-tile"><CalendarDays size={23}/></span><div><h1>Weekly study routine</h1><p>Built from your saved subjects and availability.</p></div><div className="heading-spacer"/><Button onClick={generatePlan} disabled={planBusy}>{planBusy?<LoaderCircle size={16} className="spin"/>:<Sparkles size={16}/>} Generate again</Button></div>{sessions.length===0?<EmptyState title="Your routine is ready to be created" description="Add subjects and available time, then generate your first study plan." icon={<CalendarDays size={22}/>}/>:<div className="calendar-wrap"><div className="week-grid"><div className="week-label">TIME</div>{DAY_SHORT.map((d,i)=><div className={i===today?'week-day today-day':'week-day'} key={d}>{d}</div>)}{['08:00','10:00','12:00','14:00','16:00','18:00','20:00'].map((t,ri)=><><div className="time-label" key={'t'+t}>{fmtTime(t)}</div>{DAY_SHORT.map((d,di)=>{const matches=sessionsByDay[di].filter(s=>mins(s.start_time)>=mins(t)&&mins(s.start_time)<mins(t)+120);return <div className="calendar-cell" key={d+t}>{matches.map(s=><button key={s.id} className={`calendar-session ${s.status==='completed'?'session-done':''} color-${subjects.findIndex(sb=>sb.id===s.subject_id)%4}`} title={`${s.subject_name}, ${fmtTime(s.start_time)}–${fmtTime(s.end_time)}`} onClick={()=>toggleSession(s)}><strong>{s.subject_name}</strong><small>{fmtTime(s.start_time)}–{fmtTime(s.end_time)}</small><span>{s.status==='completed'?'Completed':'Mark complete'}</span></button>)}</div>})}</>)}</div><p className="calendar-hint"><CheckCircle2 size={15}/> Click a session to toggle its completion status.</p></div>}</section>}
-      {view==='Settings'&&<div className="page-stack"><section className="panel page-panel"><div className="page-heading"><span className="icon-tile"><SettingsIcon size={23}/></span><div><h1>Settings</h1><p>Account and study planner preferences.</p></div></div><div className="settings-list"><div className="settings-item"><span className="settings-icon"><ShieldCheck size={19}/></span><div><strong>Account security</strong><p>Signed in as {user.email}. Password recovery is handled by Firebase Authentication.</p></div><button className="subtle-link" onClick={()=>{setEmail(user.email||'');setAuthMode('reset');void sendPasswordResetEmail(auth,user.email||'').then(()=>setNotice({type:'success',text:'If your account is eligible, a reset email will arrive shortly.'})).catch((error)=>setNotice({type:'error',text:firebaseAuthMessage(error,'reset')}))}}>Send reset email <ArrowRight size={15}/></button></div><div className="settings-item"><span className="settings-icon"><UserRound size={19}/></span><div><strong>Profile settings</strong><p>Update your name, class, school, and username.</p></div><button className="subtle-link" onClick={()=>setView('Profile')}>Manage <ArrowRight size={15}/></button></div><div className="settings-item"><span className="settings-icon"><CalendarDays size={19}/></span><div><strong>Routine and study plan</strong><p>Manage your saved subjects and time rules.</p></div><button className="subtle-link" onClick={()=>setView('Routine')}>Open routine <ArrowRight size={15}/></button></div></div></section><section className="panel page-panel account-warning"><h2>Sign out</h2><p>Sign out from this device. Your saved subjects, profile, time slots, and sessions remain in your account.</p><Button variant="secondary" onClick={signOut}><LogOut size={17}/> Sign out</Button></section></div>}
+      {view==='Settings'&&<div className="page-stack"><section className="panel page-panel"><div className="page-heading"><span className="icon-tile"><SettingsIcon size={23}/></span><div><h1>Settings</h1><p>Account and study planner preferences.</p></div></div><div className="settings-list"><div className="settings-item"><span className="settings-icon"><ShieldCheck size={19}/></span><div><strong>Account security</strong><p>Signed in as {user.email}. Password recovery is handled by Supabase Auth.</p></div><button className="subtle-link" onClick={()=>{setEmail(user.email||'');setAuthMode('reset');void supabase.auth.resetPasswordForEmail(user.email||'',{redirectTo:window.location.origin}).then(({error})=>setNotice({type:error?'error':'success',text:error?'Could not send a reset link. Please try again.':'If your account is eligible, a reset email will arrive shortly.'}))}}>Send reset email <ArrowRight size={15}/></button></div><div className="settings-item"><span className="settings-icon"><UserRound size={19}/></span><div><strong>Profile settings</strong><p>Update your name, class, school, and username.</p></div><button className="subtle-link" onClick={()=>setView('Profile')}>Manage <ArrowRight size={15}/></button></div><div className="settings-item"><span className="settings-icon"><CalendarDays size={19}/></span><div><strong>Routine and study plan</strong><p>Manage your saved subjects and time rules.</p></div><button className="subtle-link" onClick={()=>setView('Routine')}>Open routine <ArrowRight size={15}/></button></div></div></section><section className="panel page-panel account-warning"><h2>Sign out</h2><p>Sign out from this device. Your saved subjects, profile, time slots, and sessions are stored in your account.</p><Button variant="secondary" onClick={signOut}><LogOut size={17}/> Sign out</Button></section></div>}
       </>}
       <footer className="workspace-footer"><Brand small/><span>Make room for focused learning.</span><span>© {new Date().getFullYear()} Study Flow</span></footer>
     </main>
