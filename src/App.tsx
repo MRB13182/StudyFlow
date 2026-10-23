@@ -63,8 +63,6 @@ export default function App() {
     const params = new URLSearchParams(window.location.search)
     return params.get('mode') === 'resetPassword' && params.has('oobCode')
   })
-  const [newPassword,setNewPassword] = useState('')
-  const [confirmNewPassword,setConfirmNewPassword] = useState('')
   const [notice,setNotice] = useState<Notice|null>(null)
   const [view,setView] = useState<View>('Home')
   const [mobileNav,setMobileNav] = useState(false)
