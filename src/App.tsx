@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import {
   Activity, AlertCircle, ArrowRight, BookOpen, CalendarDays, Check, CheckCircle2,
-  ChevronDown, Clock3, Flame, GraduationCap, Home, KeyRound, LoaderCircle, LogOut,
-  Menu, Plus, Settings as SettingsIcon, ShieldCheck, Sparkles, Trash2, UserRound,
-  X, Zap, Eye, EyeOff, CalendarClock, ListChecks
+  Clock3, GraduationCap, Home, KeyRound, LoaderCircle, LogOut, Menu, Plus,
+  Settings as SettingsIcon, ShieldCheck, Sparkles, Trash2, UserRound,
+  X, Zap, Eye, EyeOff, CalendarClock
 } from 'lucide-react'
-import type { Session, User } from '@supabase/supabase-js'
-import { isSupabaseConfigured, supabase } from './lib/supabase'
+import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail, confirmPasswordReset } from 'firebase/auth'
+import type { User } from 'firebase/auth'
+import { auth } from './lib/firebase'
 
 type Profile = { id: string; full_name: string; class_name: string; school: string; exam_year: string; username: string; about: string }
 type Subject = { id: string; name: string; units: number; topics: string; duration_minutes: number; created_at?: string }
@@ -40,8 +41,18 @@ function EmptyState({ title, description, icon }: {title:string;description:stri
   return <div className="empty-state"><div className="empty-icon">{icon || <BookOpen size={22}/>}</div><strong>{title}</strong><p>{description}</p></div>
 }
 
+function firebaseErrorMessage(error: unknown) {
+  const code = typeof error === 'object' && error !== null && 'code' in error ? String((error as {code:unknown}).code) : ''
+  if (code === 'auth/email-already-in-use') return 'User already exists. Please sign in'
+  if (['auth/invalid-credential','auth/wrong-password','auth/user-not-found'].includes(code)) return 'Email or password is incorrect'
+  if (code === 'auth/weak-password') return 'Password must be at least 6 characters'
+  if (code === 'auth/invalid-email') return 'Enter a valid email address'
+  if (code === 'auth/too-many-requests') return 'Too many attempts. Please try again later.'
+  return error instanceof Error && error.message ? error.message : 'Authentication failed. Please try again.'
+}
+
 export default function App() {
-  const [session,setSession] = useState<Session|null>(null)
+  const [user,setUser] = useState<User|null>(null)
   const [authReady,setAuthReady] = useState(false)
   const [authMode,setAuthMode] = useState<'login'|'register'|'reset'>('login')
   const [authBusy,setAuthBusy] = useState(false)
@@ -49,15 +60,17 @@ export default function App() {
   const [email,setEmail] = useState('')
   const [password,setPassword] = useState('')
   const [confirmPassword,setConfirmPassword] = useState('')
-  const [fullName,setFullName] = useState('')
-  const [className,setClassName] = useState('')
-  const [school,setSchool] = useState('')
-  const [username,setUsername] = useState('')
+  const [recoveryCode,setRecoveryCode] = useState('')
+  const [newPassword,setNewPassword] = useState('')
+  const [confirmNewPassword,setConfirmNewPassword] = useState('')
+  const [passwordRecovery,setPasswordRecovery] = useState(() => new URLSearchParams(window.location.search).has('oobCode') || window.location.hash.includes('type=recovery'))
+
   const [notice,setNotice] = useState<Notice|null>(null)
   const [view,setView] = useState<View>('Home')
   const [mobileNav,setMobileNav] = useState(false)
   const [loadingData,setLoadingData] = useState(false)
-  const [profile,setProfile] = useState<Profile|null>(null)
+  // Firebase Authentication only; no database or profile storage.
+  const [profile,setProfile] = useState<null>(null)
   const [subjects,setSubjects] = useState<Subject[]>([])
   const [slots,setSlots] = useState<TimeSlot[]>([])
   const [sessions,setSessions] = useState<StudySession[]>([])
@@ -75,33 +88,88 @@ export default function App() {
   const [newPassword,setNewPassword] = useState('')
   const [confirmNewPassword,setConfirmNewPassword] = useState('')
 
-  useEffect(() => {
-    if (!supabase) { setAuthReady(true); return }
-    supabase.auth.getSession().then(({data})=>{setSession(data.session);setAuthReady(true)})
-    const {data:{subscription}} = supabase.auth.onAuthStateChange((_event,next)=>{ setSession(next); setAuthReady(true) })
-    return () => subscription.unsubscribe()
-  },[])
+  useEffect(() => onAuthStateChanged(auth, currentUser => {
+    setUser(currentUser)
+    setAuthReady(true)
+  }), [])
 
+  // User profile, subjects, availability and routines are intentionally not persisted.
   useEffect(() => {
-    if (!supabase || !session?.user) { setProfile(null); setSubjects([]); setSlots([]); setSessions([]); return }
-    void loadData(session.user)
-  },[session?.user?.id])
-
-  async function loadData(user: User) {
-    if (!supabase) return
-    setLoadingData(true)
-    const [p,s,t,st] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id',user.id).maybeSingle(),
-      supabase.from('subjects').select('*').eq('user_id',user.id).order('created_at',{ascending:true}),
-      supabase.from('time_slots').select('*').eq('user_id',user.id).order('day_of_week'),
-      supabase.from('study_sessions').select('*').eq('user_id',user.id).order('day_of_week').order('start_time')
-    ])
-    if (p.error || s.error || t.error || st.error) setNotice({type:'error',text:[p.error,s.error,t.error,st.error].find(Boolean)?.message || 'Could not load your saved data.'})
-    setProfile(p.data as Profile|null)
-    setSubjects((s.data || []) as Subject[])
-    setSlots((t.data || []) as TimeSlot[])
-    setSessions((st.data || []) as StudySession[])
+    setProfile(null)
+    setSubjects([])
+    setSlots([])
+    setSessions([])
     setLoadingData(false)
+  }, [user?.uid])
+
+  const greetingName = user?.displayName || user?.email?.split('@')[0] || 'Student'
+  const completed = sessions.filter(s=>s.status==='completed').length
+  const studyMinutes = sessions.filter(s=>s.status==='completed').reduce((sum,s)=>sum+Math.max(0,mins(s.end_time)-mins(s.start_time)),0)
+  const today = (new Date().getDay()+6)%7
+  const todaySessions = sessions.filter(s=>s.day_of_week===today).sort((a,b)=>a.start_time.localeCompare(b.start_time))
+  const noticeDismiss = () => setNotice(null)
+
+  async function handleAuth(e: FormEvent) {
+    e.preventDefault()
+    setAuthBusy(true); setNotice(null)
+    try {
+      if (authMode==='register') {
+        if (password !== confirmPassword) throw new Error('Passwords do not match')
+        if (password.length < 6) throw new Error('Password must be at least 6 characters')
+        await createUserWithEmailAndPassword(auth,email.trim(),password)
+        setNotice({type:'success',text:'Account created. You are now signed in.'})
+        setView('Home')
+      } else if (authMode==='login') {
+        await signInWithEmailAndPassword(auth,email.trim(),password)
+        setNotice({type:'success',text:'Signed in successfully.'})
+        setView('Home')
+      } else {
+        await sendPasswordResetEmail(auth,email.trim())
+        setNotice({type:'success',text:'If this email is registered, a password reset email has been sent.'})
+      }
+    } catch (e) {
+      const code = typeof e === 'object' && e !== null && 'code' in e ? String((e as {code:unknown}).code) : ''
+      if (authMode==='login' && ['auth/invalid-credential','auth/wrong-password','auth/user-not-found','auth/invalid-email'].includes(code)) {
+        setNotice({type:'error',text:'Email or password is incorrect'})
+      } else if (authMode==='register' && ['auth/email-already-in-use','auth/account-exists-with-different-credential'].includes(code)) {
+        setNotice({type:'error',text:'User already exists. Please sign in'})
+      } else {
+        setNotice({type:'error',text:firebaseErrorMessage(e)})
+      }
+    } finally { setAuthBusy(false) }
+  }
+
+  async function signOutUser() {
+    try {
+      await signOut(auth)
+      setView('Home')
+      setNotice(null)
+      setAuthMode('login')
+      setPassword('')
+    } catch (e) { setNotice({type:'error',text:firebaseErrorMessage(e)}) }
+  }
+
+  async function updateRecoveredPassword(e: FormEvent) {
+    e.preventDefault()
+    if (newPassword.length < 6) { setNotice({type:'error',text:'Password must be at least 6 characters'}); return }
+    if (newPassword !== confirmNewPassword) { setNotice({type:'error',text:'Passwords do not match'}); return }
+    const code = new URLSearchParams(window.location.search).get('oobCode') || recoveryCode
+    if (!code) { setNotice({type:'error',text:'Open the password reset link from your email to choose a new password.'}); return }
+    setAuthBusy(true); setNotice(null)
+    try {
+      // Firebase password reset codes come from the email action link.
+      const { applyActionCode } = await import('firebase/auth')
+      void applyActionCode
+      const { verifyPasswordResetCode, confirmPasswordReset } = await import('firebase/auth')
+      await verifyPasswordResetCode(auth, code)
+      await confirmPasswordReset(auth, code, newPassword)
+      window.history.replaceState({},document.title,window.location.pathname)
+      setPasswordRecovery(false); setNewPassword(''); setConfirmNewPassword(''); setRecoveryCode('')
+      setAuthMode('login')
+      setNotice({type:'success',text:'Password updated. Please sign in with your new password.'})
+    } catch (e) {
+      setNotice({type:'error',text:firebaseErrorMessage(e)})
+    } finally { setAuthBusy(false) }
   }
   const user = session?.user
   const greetingName = profile?.full_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Student'
@@ -155,88 +223,7 @@ export default function App() {
     setPasswordRecovery(false); setNewPassword(''); setConfirmNewPassword('')
     setNotice({type:'success',text:'Your password has been updated.'})
   }
-  async function saveProfile(e:FormEvent) {
-    e.preventDefault()
-    if(!supabase || !user) return
-    const values={id:user.id,full_name:fullName || profile?.full_name || '',class_name:className || profile?.class_name || '',school:school || profile?.school || '',exam_year:profile?.exam_year || '',username:username || profile?.username || '',about:profile?.about || ''}
-    const {data,error}=await supabase.from('profiles').upsert(values).select().single()
-    if(error){setNotice({type:'error',text:error.message});return}
-    setProfile(data as Profile);setEditingProfile(false);setNotice({type:'success',text:'Profile saved.'})
-  }
-  async function addSubject(e:FormEvent) {
-    e.preventDefault()
-    if(!supabase||!user) return
-    const name=subjectName.trim()
-    if(!name){setNotice({type:'error',text:'Enter a subject name.'});return}
-    const {data,error}=await supabase.from('subjects').insert({user_id:user.id,name,units:Math.max(1,Number(units)||1),topics,duration_minutes:Math.max(15,Number(duration)||60)}).select().single()
-    if(error){setNotice({type:'error',text:error.message});return}
-    setSubjects(prev=>[...prev,data as Subject]);setSubjectName('');setUnits('1');setTopics('');setDuration('60');setNotice({type:'success',text:'Subject added.'})
-  }
-  async function deleteSubject(id:string) {
-    if(!supabase||!user)return
-    const {error}=await supabase.from('subjects').delete().eq('id',id).eq('user_id',user.id)
-    if(error){setNotice({type:'error',text:error.message});return}
-    setSubjects(prev=>prev.filter(s=>s.id!==id));setNotice({type:'success',text:'Subject deleted.'})
-  }
-  async function addSlot(e:FormEvent) {
-    e.preventDefault()
-    if(!supabase||!user)return
-    if(mins(slotEnd)<=mins(slotStart)){setNotice({type:'error',text:'End time must be later than start time.'});return}
-    const overlap=slots.some(s=>s.day_of_week===Number(slotDay)&&mins(slotStart)<mins(s.end_time)&&mins(slotEnd)>mins(s.start_time)&&(s.kind===slotKind))
-    if(overlap){setNotice({type:'error',text:`This time overlaps an existing ${slotKind} period for that day.`});return}
-    const {data,error}=await supabase.from('time_slots').insert({user_id:user.id,day_of_week:Number(slotDay),start_time:slotStart,end_time:slotEnd,kind:slotKind}).select().single()
-    if(error){setNotice({type:'error',text:error.message});return}
-    setSlots(prev=>[...prev,data as TimeSlot].sort((a,b)=>a.day_of_week-b.day_of_week||a.start_time.localeCompare(b.start_time)))
-    setNotice({type:'success',text:slotKind==='blocked'?'Blocked time saved.':'Available time saved.'})
-  }
-  async function deleteSlot(id:string) {
-    if(!supabase||!user)return
-    const {error}=await supabase.from('time_slots').delete().eq('id',id).eq('user_id',user.id)
-    if(error){setNotice({type:'error',text:error.message});return}
-    setSlots(prev=>prev.filter(s=>s.id!==id));setNotice({type:'success',text:'Time period removed.'})
-  }
-  async function toggleSession(item:StudySession) {
-    if(!supabase||!user)return
-    const status=item.status==='completed'?'planned':'completed'
-    const {error}=await supabase.from('study_sessions').update({status}).eq('id',item.id).eq('user_id',user.id)
-    if(error){setNotice({type:'error',text:error.message});return}
-    setSessions(prev=>prev.map(s=>s.id===item.id?{...s,status}:s))
-  }
-  async function generatePlan() {
-    if(!supabase||!user)return
-    if(!subjects.length){setNotice({type:'info',text:'Add at least one subject before creating a study plan.'});setView('Subjects');return}
-    const available=slots.filter(s=>s.kind==='available')
-    if(!available.length){setNotice({type:'info',text:'Add the times when you can study before generating a routine.'});setView('Block Time');return}
-    setPlanBusy(true);setNotice(null)
-    const blocks=slots.filter(s=>s.kind==='blocked')
-    const planned: {user_id:string;subject_id:string;subject_name:string;day_of_week:number;start_time:string;end_time:string;status:'planned'}[]=[]
-    const sortedSubjects=[...subjects].sort((a,b)=>b.duration_minutes-a.duration_minutes)
-    for(const day of DAYS.map((_,i)=>i)){
-      const windows=available.filter(s=>s.day_of_week===day).sort((a,b)=>a.start_time.localeCompare(b.start_time))
-      for(const win of windows){
-        let cursor=mins(win.start_time)
-        const limit=mins(win.end_time)
-        while(cursor+15<=limit && planned.filter(p=>p.day_of_week===day).length<5){
-          const blocked=blocks.filter(b=>b.day_of_week===day&&cursor<mins(b.end_time)&&cursor+Math.min(60,limit-cursor)>mins(b.start_time)).sort((a,b)=>mins(a.start_time)-mins(b.start_time))[0]
-          if(blocked){cursor=Math.max(cursor,mins(blocked.end_time));continue}
-          const length=Math.min(60,sortedSubjects[planned.length%sortedSubjects.length].duration_minutes,limit-cursor)
-          if(length<15)break
-          const chosen=sortedSubjects[(planned.length+day)%sortedSubjects.length]
-          if(planned.some(p=>p.day_of_week===day&&cursor<mins(p.end_time)&&cursor+length>mins(p.start_time))){cursor+=15;continue}
-          planned.push({user_id:user.id,subject_id:chosen.id,subject_name:chosen.name,day_of_week:day,start_time:toHHMM(cursor),end_time:toHHMM(cursor+length),status:'planned'})
-          cursor+=length+15
-        }
-      }
-    }
-    if(!planned.length){setPlanBusy(false);setNotice({type:'error',text:'No suitable study sessions fit your available time and blocked periods. Adjust your time slots and try again.'});return}
-    const {error:deleteError}=await supabase.from('study_sessions').delete().eq('user_id',user.id).eq('status','planned')
-    if(deleteError){setPlanBusy(false);setNotice({type:'error',text:deleteError.message});return}
-    const {data,error}=await supabase.from('study_sessions').insert(planned).select()
-    if(error){setPlanBusy(false);setNotice({type:'error',text:error.message});return}
-    setSessions(prev=>[...prev.filter(s=>s.status==='completed'),...(data as StudySession[])])
-    setPlanBusy(false);setNotice({type:'success',text:`Created ${planned.length} study sessions from your subjects and time preferences.`});setView('Routine')
-  }
-
+  // This integration uses Firebase Authentication only. No Firestore or Storage operations.
   const navItems:{label:View;icon:ReactNode}[]=[
     {label:'Home',icon:<Home size={18}/>},{label:'Profile',icon:<UserRound size={18}/>},
     {label:'Subjects',icon:<BookOpen size={18}/>},{label:'Block Time',icon:<CalendarClock size={18}/>},
@@ -246,6 +233,8 @@ export default function App() {
   const sessionsByDay=useMemo(()=>DAYS.map((_,day)=>sessions.filter(s=>s.day_of_week===day).sort((a,b)=>a.start_time.localeCompare(b.start_time))),[sessions])
 
   if(!authReady) return <div className="app-loading"><LoaderCircle className="spin" size={28}/><p>Opening your study space…</p></div>
+  if(passwordRecovery && !user) return <div className="auth-shell"><main className="auth-main recovery-inline"><form className="panel auth-card" onSubmit={updateRecoveredPassword}><div className="panel-heading"><span className="icon-tile"><KeyRound size={23}/></span><div><h2>Choose a new password</h2><p>Use the reset link from your email.</p></div></div><Field label="Reset code (if not in the URL)" value={recoveryCode} onChange={setRecoveryCode} placeholder="Paste the oobCode only"/><Field label="New password" value={newPassword} onChange={setNewPassword} type="password" required/><Field label="Confirm new password" value={confirmNewPassword} onChange={setConfirmNewPassword} type="password" required/><Button type="submit" disabled={authBusy}>{authBusy?'Updating…':'Update password'}</Button><button className="inline-link" type="button" onClick={()=>{setPasswordRecovery(false);setAuthMode('login');window.history.replaceState({},document.title,window.location.pathname)}}>Back to sign in</button>{notice&&<div className={`notice notice-${notice.type}`}>{notice.text}</div>}</form></main></div>
+
   if(!user) return <div className="auth-shell">
     <div className="auth-top"><Brand/><div className="top-links"><a href="#features">Features</a><a href="#how">How it works</a><a href="#about">About</a></div><button className="button button-primary top-login" onClick={()=>{setAuthMode('login');window.scrollTo({top:0,behavior:'smooth'})}}>Log in</button></div>
     <main className="auth-main">
@@ -263,7 +252,7 @@ export default function App() {
           {authMode==='login' && <div className="forgot-row"><button type="button" className="inline-link" onClick={()=>setAuthMode('reset')}>Forgot password?</button></div>}
           <Button type="submit" disabled={authBusy}>{authBusy?<><LoaderCircle size={16} className="spin"/> Please wait…</>:authMode==='register'?'Create account':authMode==='reset'?'Send reset link':'Log in'} {!authBusy&&<ArrowRight size={17}/>}</Button>
           <div className="auth-switch">{authMode==='login'?<>New to Study Flow? <button type="button" onClick={()=>setAuthMode('register')}>Create an account</button></>:authMode==='register'?<>Already registered? <button type="button" onClick={()=>setAuthMode('login')}>Log in</button></>:<>Remembered it? <button type="button" onClick={()=>setAuthMode('login')}>Back to login</button></>}</div>
-          {!isSupabaseConfigured && <div className="config-warning"><AlertCircle size={17}/><span>Account services need Supabase configuration before registration or login can work.</span></div>}
+
         </form>
         <aside className="panel auth-aside"><div className="aside-art"><div className="book book-a"/><div className="book book-b"/><div className="book book-c"/><Sparkles size={26} className="aside-spark"/></div><h3>A calmer way to study</h3><p>Your subjects, your schedule, and your goals — organized in one place you control.</p><div className="aside-feature"><span><CheckCircle2 size={18}/></span><div><strong>Your own account</strong><small>Private data and a personal study space.</small></div></div><div className="aside-feature"><span><CheckCircle2 size={18}/></span><div><strong>Time that works for you</strong><small>Keep your unavailable periods protected.</small></div></div><div className="aside-feature"><span><CheckCircle2 size={18}/></span><div><strong>Flexible routines</strong><small>Adjust the plan as your week changes.</small></div></div></aside>
       </section>
@@ -275,7 +264,7 @@ export default function App() {
   if (passwordRecovery && user) return <div className="recovery-shell"><form className="panel recovery-card" onSubmit={updatePassword}><Brand/><span className="icon-tile recovery-icon"><KeyRound size={23}/></span><h1>Choose a new password</h1><p>Create a new password for your Study Flow account.</p><Field label="New password" value={newPassword} onChange={setNewPassword} type="password" placeholder="At least 8 characters" required/><Field label="Confirm new password" value={confirmNewPassword} onChange={setConfirmNewPassword} type="password" placeholder="Enter it again" required/><Button type="submit" disabled={authBusy}>{authBusy?<><LoaderCircle size={16} className="spin"/> Updating…</>:'Update password'} {!authBusy&&<ArrowRight size={16}/>}</Button>{notice&&<div className={`notice notice-${notice.type}`}>{notice.text}</div>}</form></div>
 
   return <div className="dashboard-shell">
-    <aside className={`sidebar ${mobileNav?'sidebar-open':''}`}><div className="sidebar-brand"><Brand small/><button className="mobile-close" onClick={()=>setMobileNav(false)}><X size={18}/></button></div><div className="sidebar-label">WORKSPACE</div><nav>{navItems.map(item=><button key={item.label} className={view===item.label?'nav-item active':'nav-item'} onClick={()=>{setView(item.label);setMobileNav(false)}}>{item.icon}<span>{item.label}</span>{view===item.label&&<span className="nav-dot"/>}</button>)}</nav><div className="sidebar-bottom"><div className="sidebar-motivation"><div className="motivation-icon"><Sparkles size={22}/></div><strong>Keep going!</strong><span>Small steps build big progress.</span></div><button className="nav-item signout" onClick={signOut}><LogOut size={18}/><span>Sign out</span></button></div></aside>
+    <aside className={`sidebar ${mobileNav?'sidebar-open':''}`}><div className="sidebar-brand"><Brand small/><button className="mobile-close" onClick={()=>setMobileNav(false)}><X size={18}/></button></div><div className="sidebar-label">WORKSPACE</div><nav>{navItems.map(item=><button key={item.label} className={view===item.label?'nav-item active':'nav-item'} onClick={()=>{setView(item.label);setMobileNav(false)}}>{item.icon}<span>{item.label}</span>{view===item.label&&<span className="nav-dot"/>}</button>)}</nav><div className="sidebar-bottom"><div className="sidebar-motivation"><div className="motivation-icon"><Sparkles size={22}/></div><strong>Keep going!</strong><span>Small steps build big progress.</span></div><button className="nav-item signout" onClick={signOutUser}><LogOut size={18}/><span>Sign out</span></button></div></aside>
     {mobileNav&&<button className="mobile-overlay" aria-label="Close menu" onClick={()=>setMobileNav(false)}/>}
     <main className="workspace"><header className="dashboard-topbar"><button className="mobile-menu" onClick={()=>setMobileNav(true)}><Menu size={21}/></button><div><span className="topbar-kicker">YOUR PERSONAL PLANNER</span><strong>{view==='Home'?'Your study overview':view}</strong></div><div className="topbar-right"><span className="today-chip"><CalendarDays size={15}/>{new Date().toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'})}</span><div className="user-avatar">{greetingName.slice(0,1).toUpperCase()}</div></div></header>
       {notice&&<div className={`notice notice-${notice.type}`}><span>{notice.type==='error'?<AlertCircle size={18}/>:notice.type==='success'?<CheckCircle2 size={18}/>:<Activity size={18}/>} {notice.text}</span><button onClick={noticeDismiss} aria-label="Dismiss"><X size={17}/></button></div>}
