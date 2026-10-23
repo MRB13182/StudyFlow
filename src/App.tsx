@@ -160,7 +160,7 @@ export default function App() {
       if (authMode==='register') {
         const {data,error} = await supabase.auth.signUp({
           email:email.trim(),password,
-          options:{data:{full_name:fullName.trim(),username:username.trim()||null},emailRedirectTo:window.location.origin}
+          options:{data:{full_name:fullName.trim(),class_name:className.trim(),school:school.trim(),username:username.trim()||null},emailRedirectTo:window.location.origin}
         })
         if(error) throw error
         setNotice({type:'success',text:data.session?'Your account was created. Welcome to Study Flow!':'Account created. Check your email to confirm your address before logging in.'})
@@ -233,7 +233,7 @@ export default function App() {
     if(!user)return
     const {error}=await supabase.from('subjects').delete().eq('id',id).eq('user_id',user.id)
     if(error){setNotice({type:'error',text:'Could not delete this subject.'});return}
-    setSubjects(prev=>prev.filter(s=>s.id!==id));setSessions(prev=>prev.filter(s=>s.subject_id!==id))
+    setSubjects(prev=>prev.filter(s=>s.id!==id));setSessions(prev=>prev.map(s=>s.subject_id===id?{...s,subject_id:null}:s))
     setNotice({type:'success',text:'Subject deleted.'})
   }
 
@@ -286,12 +286,12 @@ export default function App() {
     }
     if(!planned.length){setPlanBusy(false);setNotice({type:'error',text:'No suitable study sessions fit your available time and blocked periods. Adjust your time slots and try again.'});return}
     if(!user){setPlanBusy(false);return}
-    const {error:deleteError}=await supabase.from('study_sessions').delete().eq('user_id',user.id).eq('status','planned')
-    if(deleteError){setPlanBusy(false);setNotice({type:'error',text:'Could not replace the previous plan. Please try again.'});return}
-    const rows=planned.map(p=>({user_id:user.id,subject_id:p.subject_id,subject_name:p.subject_name,day_of_week:p.day_of_week,start_time:p.start_time,end_time:p.end_time,status:'planned'}))
-    const {data,error}=await supabase.from('study_sessions').insert(rows).select('*')
-    if(error){setPlanBusy(false);setNotice({type:'error',text:'Could not save the generated routine.'});return}
-    setSessions(prev=>[...prev.filter(s=>s.status==='completed'),...(data||[]).map((s:any)=>({id:s.id,subject_id:s.subject_id,subject_name:s.subject_name,day_of_week:s.day_of_week,start_time:String(s.start_time).slice(0,5),end_time:String(s.end_time).slice(0,5),status:s.status}))])
+    const routinePayload=planned.map(p=>({subject_id:p.subject_id,subject_name:p.subject_name,day_of_week:p.day_of_week,start_time:p.start_time,end_time:p.end_time}))
+    const {error:saveError}=await supabase.rpc('replace_planned_study_sessions',{p_sessions:routinePayload})
+    if(saveError){setPlanBusy(false);setNotice({type:'error',text:'Could not save the generated routine. Your previous routine has been preserved.'});return}
+    const {data,error}=await supabase.from('study_sessions').select('*').eq('user_id',user.id).order('day_of_week').order('start_time')
+    if(error){setPlanBusy(false);setNotice({type:'error',text:'Routine saved, but it could not be refreshed. Reload the page to see it.'});return}
+    setSessions((data||[]).map((s:any)=>({id:s.id,subject_id:s.subject_id,subject_name:s.subject_name,day_of_week:s.day_of_week,start_time:String(s.start_time).slice(0,5),end_time:String(s.end_time).slice(0,5),status:s.status})))
     setPlanBusy(false);setNotice({type:'success',text:`Saved ${planned.length} study sessions to your account.`});setView('Routine')
   }
 
