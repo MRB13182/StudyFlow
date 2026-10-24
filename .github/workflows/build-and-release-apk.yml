@@ -38,6 +38,15 @@ jobs:
         run: npm run ci
       - name: Sync Capacitor
         run: npx cap sync android
+      - name: Set automated version for tagged releases
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          CODE=$(echo "$VERSION" | awk -F. '{printf "%d%02d%02d", $1,$2,$3}')
+          echo "ANDROID_VERSION_NAME=$VERSION" >> "$GITHUB_ENV"
+          echo "ANDROID_VERSION_CODE=$CODE" >> "$GITHUB_ENV"
       - name: Build Android debug APK
         run: |
           chmod +x android/gradlew
