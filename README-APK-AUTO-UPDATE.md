@@ -32,7 +32,7 @@ sha256sum .build-outputs/app-debug.apk APK_DOWNLOAD/app-debug.apk
 
 ## Automatic builds and releases
 
-GitHub Actions builds the website and debug APK on qualifying pushes to `main`. The workflow uploads APK and metadata artifacts for downloading in the Actions run. To publish a release, push a tag such as `v1.1.1`. Confirm repository Actions settings allow workflow write access to repository contents/releases.
+GitHub Actions builds the website and debug APK on qualifying pushes to `main`. The workflow uploads APK artifacts for downloading in the Actions run. To publish a release, push a tag such as `v1.1.1`. Confirm repository Actions settings allow workflow write access to repository contents/releases.
 
 The release workflow must publish `app-debug.apk` and metadata containing the SHA-256 of that exact file. A debug APK is appropriate for testing. For reliable updates over existing installs, retain the same application ID and signing identity.
 
