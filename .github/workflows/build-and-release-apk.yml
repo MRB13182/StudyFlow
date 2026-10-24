@@ -63,10 +63,15 @@ jobs:
           sha256sum .build-outputs/app-debug.apk APK_DOWNLOAD/app-debug.apk | tee .build-outputs/checksums.txt
           echo "APK_SIZE=$(stat -c%s .build-outputs/app-debug.apk)" >> "$GITHUB_ENV"
           echo "APK_SHA=$(sha256sum .build-outputs/app-debug.apk | cut -d' ' -f1)" >> "$GITHUB_ENV"
+      - name: Package project ZIP including both APK copies
+        run: |
+          zip -qr StudyFlow-project-with-apk.zip . \
+            -x '.git/*' 'node_modules/*' 'android/.gradle/*' 'android/app/build/*' 'dist/*' '*/.DS_Store'
       - uses: actions/upload-artifact@v4
         with:
-          name: studyflow-debug-apk
+          name: studyflow-project-and-debug-apk
           path: |
+            StudyFlow-project-with-apk.zip
             .build-outputs/app-debug.apk
             APK_DOWNLOAD/app-debug.apk
             .build-outputs/checksums.txt
