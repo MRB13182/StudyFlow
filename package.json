@@ -9,7 +9,9 @@
     "preview": "vite preview --host 0.0.0.0 --port 3000",
     "lint": "tsc --noEmit",
     "test": "node scripts/regression-check.mjs",
-    "ci": "npm run lint && npm test && npm run build"
+    "ci": "npm run lint && npm test && npm run build",
+    "branding:generate": "python3 scripts/generate-branding-from-logo.py",
+    "build:android": "npm run branding:generate && npm run build && npx cap sync android && cd android && ./gradlew assembleDebug"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",
