@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <linearGradient id="favGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366F1"/>
+      <stop offset="50%" stop-color="#4F46E5"/>
+      <stop offset="100%" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="favSpark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#818CF8"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="34" fill="url(#favGrad)"/>
+  <rect x="2" y="2" width="124" height="124" rx="32" stroke="rgba(255,255,255,0.25)" stroke-width="2"/>
+  
+  <!-- Cap Rhombus (Top) -->
+  <path d="M64 32 L105 52 L64 72 L23 52 Z" fill="#FFFFFF"/>
+  <!-- Cap Under Skullcap Body -->
+  <path d="M33 59 V77 C33 89 46 95 64 95 C82 95 95 89 95 77 V59 L64 74 Z" fill="rgba(255, 255, 255, 0.90)"/>
+  <!-- Tassel -->
+  <path d="M64 52 Q87 57 95 74" stroke="#38BDF8" stroke-width="4" stroke-linecap="round" fill="none"/>
+  <circle cx="95" cy="76" r="4.5" fill="#38BDF8"/>
+  <!-- AI Sparkle -->
+  <path d="M102 28 Q106 36 114 40 Q106 44 102 52 Q98 44 90 40 Q98 36 102 28 Z" fill="url(#favSpark)"/>
+</svg>

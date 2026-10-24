@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 120" fill="none">
+  <defs>
+    <linearGradient id="primaryGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366F1"/>
+      <stop offset="50%" stop-color="#4F46E5"/>
+      <stop offset="100%" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="sparkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#818CF8"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  
+  <!-- Icon Mark Container -->
+  <g transform="translate(10, 10)">
+    <!-- Base Glow / Rounded Tile -->
+    <rect x="0" y="0" width="100" height="100" rx="26" fill="url(#primaryGrad)" filter="drop-shadow(0 8px 16px rgba(79, 70, 229, 0.35))"/>
+    
+    <!-- Inner Accent Ring -->
+    <rect x="2" y="2" width="96" height="96" rx="24" stroke="rgba(255, 255, 255, 0.22)" stroke-width="1.5" fill="none"/>
+    
+    <!-- Stylized Academic Cap -->
+    <!-- Cap Rhombus (Top) -->
+    <path d="M50 25 L82 41 L50 57 L18 41 Z" fill="#FFFFFF"/>
+    
+    <!-- Cap Under Skullcap Body -->
+    <path d="M26 46.5 V61 C26 70 36.5 75 50 75 C63.5 75 74 70 74 61 V46.5 L50 58.5 Z" fill="rgba(255, 255, 255, 0.88)"/>
+    
+    <!-- Tassel String and Pendant -->
+    <path d="M50 41 Q68 45 74 58" stroke="#38BDF8" stroke-width="3" stroke-linecap="round" fill="none"/>
+    <circle cx="74" cy="60" r="3.5" fill="#38BDF8"/>
+    
+    <!-- Sparkle / Flow Energy -->
+    <path d="M80 22 Q83 28 89 31 Q83 34 80 40 Q77 34 71 31 Q77 28 80 22 Z" fill="url(#sparkGrad)"/>
+    <circle cx="24" cy="28" r="2.5" fill="#38BDF8"/>
+  </g>
+
+  <!-- Typography -->
+  <g transform="translate(128, 42)">
+    <!-- Study -->
+    <text x="0" y="32" font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif" font-size="42" font-weight="800" fill="#F8FAFC" letter-spacing="-1.2">Study<tspan fill="url(#primaryGrad)">Flow</tspan></text>
+    <!-- Subtitle / Eyebrow -->
+    <text x="2" y="56" font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif" font-size="11.5" font-weight="700" fill="#94A3B8" letter-spacing="2.4">AI-POWERED STUDENT PLANNER</text>
+  </g>
+</svg>
